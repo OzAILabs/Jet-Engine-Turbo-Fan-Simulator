@@ -1,5 +1,7 @@
 # GE90-Inspired Turbofan — Interactive Cutaway Simulator
 
+![GE90-inspired turbofan cutaway — fan, compressor, combustor, turbine and exhaust](docs/screenshot.jpg)
+
 An interactive, browser-based **educational** simulation of a GE90-115B-inspired
 high-bypass, two-spool axial-flow turbofan. It shows — in a transparent,
 museum-style cutaway — how air flows from inlet to exhaust, and runs a simplified
