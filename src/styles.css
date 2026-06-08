@@ -1,0 +1,531 @@
+/* ===========================================================================
+   GE90-inspired turbofan simulator — dark technical / museum-kiosk theme.
+   =========================================================================== */
+
+:root {
+  --bg: #0a0d12;
+  --panel-bg: rgba(18, 23, 31, 0.82);
+  --panel-border: rgba(120, 150, 190, 0.18);
+  --text: #d8e0ec;
+  --muted: #8a97a8;
+  --accent: #5fa8ff;
+  --accent-dim: #2c4a6e;
+  --accent-2: #56c2c0;
+  --warn: #e3b341;
+  --crit: #ff5d5d;
+  --ok: #56c98a;
+  --shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+  --radius: 10px;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  width: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 13px;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4,
+p {
+  margin: 0;
+}
+
+/* ---- App layout ---------------------------------------------------------- */
+.app {
+  position: relative;
+  height: 100%;
+  width: 100%;
+}
+
+.scene-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.ui-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  /* drei <Html> labels portal in with a ~16.7M z-index; sit the UI panels
+     above them so the side panels are never covered by floating 3D labels. */
+  z-index: 16777300;
+}
+
+.ui-top {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.title-block {
+  pointer-events: auto;
+  text-align: center;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius);
+  padding: 8px 22px;
+  backdrop-filter: blur(8px);
+  box-shadow: var(--shadow);
+}
+.title-block h1 {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+.title-block .subtitle {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.ui-col {
+  position: absolute;
+  top: 74px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: calc(100vh - 92px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  pointer-events: auto;
+  padding: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(120, 150, 190, 0.35) transparent;
+}
+.ui-col::-webkit-scrollbar {
+  width: 6px;
+}
+.ui-col::-webkit-scrollbar-thumb {
+  background: rgba(120, 150, 190, 0.3);
+  border-radius: 6px;
+}
+.ui-left {
+  left: 12px;
+}
+.ui-right {
+  right: 12px;
+  align-items: flex-end;
+}
+
+.disclaimer {
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  color: var(--muted);
+  max-width: 70%;
+  text-align: center;
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+/* ---- Panel --------------------------------------------------------------- */
+.panel {
+  pointer-events: auto;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  width: 268px;
+  flex: 0 0 auto;
+  backdrop-filter: blur(8px);
+  box-shadow: var(--shadow);
+}
+
+.panel-title {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  color: var(--accent);
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--panel-border);
+  padding-bottom: 6px;
+}
+.panel-section {
+  margin-top: 12px;
+}
+.panel-subtitle {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  margin: 10px 0 6px;
+}
+
+/* ---- Controls ------------------------------------------------------------ */
+.field {
+  margin-bottom: 12px;
+}
+.field-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 4px;
+}
+.field-label {
+  font-size: 12px;
+  color: var(--text);
+}
+.field-value {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+input.slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 5px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--accent) 0%, #2a3340 0%);
+  background: #2a3340;
+  outline: none;
+  cursor: pointer;
+}
+input.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid #0a0d12;
+  box-shadow: 0 0 6px rgba(95, 168, 255, 0.6);
+  cursor: pointer;
+}
+input.slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid #0a0d12;
+  cursor: pointer;
+}
+
+/* Segmented control */
+.seg {
+  display: flex;
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 3px;
+  border-radius: 8px;
+  flex-wrap: wrap;
+}
+.seg-btn {
+  flex: 1 1 auto;
+  min-width: 56px;
+  padding: 6px 8px;
+  font-size: 11px;
+  text-align: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.seg-btn:hover {
+  color: var(--text);
+}
+.seg-btn.is-active {
+  background: var(--accent);
+  color: #07101e;
+  font-weight: 600;
+}
+
+/* Buttons */
+.btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.btn {
+  flex: 1 1 auto;
+  padding: 7px 10px;
+  font-size: 11px;
+  border: 1px solid var(--panel-border);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  text-align: center;
+}
+.btn:hover {
+  background: rgba(95, 168, 255, 0.14);
+  border-color: var(--accent);
+}
+.btn.is-active {
+  background: var(--accent);
+  color: #07101e;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+/* Checkbox toggles */
+.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--text);
+}
+.checkbox input {
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+
+/* ---- Readouts ------------------------------------------------------------ */
+.readouts {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.readout {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 5px;
+}
+.readout:nth-child(odd) {
+  background: rgba(255, 255, 255, 0.025);
+}
+.readout .label {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.readout .value {
+  color: var(--text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.readout .unit {
+  color: var(--muted);
+  font-size: 10.5px;
+  min-width: 40px;
+  text-align: left;
+}
+.readout.is-warn .value {
+  color: var(--crit);
+}
+.readout.is-warn {
+  background: rgba(255, 93, 93, 0.1);
+}
+
+/* ---- Charts -------------------------------------------------------------- */
+.chart {
+  margin-bottom: 14px;
+}
+.chart-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.bars {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.bar {
+  display: grid;
+  grid-template-columns: 44px 1fr 64px;
+  align-items: center;
+  gap: 8px;
+}
+.bar-label {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.bar-track {
+  height: 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.bar-fill {
+  height: 100%;
+  border-radius: 6px;
+  background: var(--accent);
+  transition: width 0.2s ease;
+  min-width: 2px;
+}
+.bar-val {
+  font-size: 11px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+}
+
+/* ---- Warnings ------------------------------------------------------------ */
+.warns {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.warn {
+  padding: 7px 10px;
+  border-radius: 7px;
+  font-size: 11.5px;
+  border-left: 3px solid var(--muted);
+  background: rgba(255, 255, 255, 0.04);
+}
+.warn.is-ok {
+  border-left-color: var(--ok);
+  color: var(--ok);
+}
+.warn.is-caution {
+  border-left-color: var(--warn);
+  background: rgba(227, 179, 65, 0.12);
+  color: #f3d488;
+}
+.warn.is-critical {
+  border-left-color: var(--crit);
+  background: rgba(255, 93, 93, 0.14);
+  color: #ff9c9c;
+  font-weight: 600;
+}
+
+/* ---- Station card (rendered inside drei <Html>) -------------------------- */
+.station-card {
+  width: 260px;
+  background: rgba(12, 16, 22, 0.95);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  padding: 12px 14px;
+  color: var(--text);
+  box-shadow: 0 10px 36px rgba(0, 0, 0, 0.6);
+  font-size: 12px;
+  transform: translate(14px, -50%);
+}
+.sc-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+.sc-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 8px;
+}
+.sc-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.sc-k {
+  color: var(--muted);
+}
+.sc-v {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.sc-explain {
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: #c2ccd9;
+  margin-bottom: 6px;
+}
+.sc-changed {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--accent-2);
+  font-style: italic;
+}
+.sc-close {
+  margin-top: 8px;
+  width: 100%;
+  padding: 5px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 11px;
+}
+.sc-close:hover {
+  background: rgba(95, 168, 255, 0.18);
+}
+
+/* ---- Floating labels (inside drei <Html>) -------------------------------- */
+.marker-label {
+  pointer-events: none;
+  white-space: nowrap;
+  font-size: 10.5px;
+  background: rgba(10, 14, 20, 0.78);
+  border: 1px solid var(--panel-border);
+  border-radius: 5px;
+  padding: 2px 6px;
+  color: var(--text);
+  transform: translate(10px, -50%);
+}
+
+.section-label {
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 170px;
+  background: rgba(10, 14, 20, 0.82);
+  border: 1px solid currentColor;
+  border-radius: 7px;
+  padding: 5px 9px;
+  text-align: center;
+  transform: translate(-50%, -100%);
+}
+.section-label .sl-name {
+  font-size: 11.5px;
+  font-weight: 700;
+}
+.section-label .sl-desc {
+  font-size: 10px;
+  color: var(--muted);
+  white-space: normal;
+}
+
+/* Small screens */
+@media (max-width: 1000px) {
+  .panel {
+    width: 220px;
+  }
+}
