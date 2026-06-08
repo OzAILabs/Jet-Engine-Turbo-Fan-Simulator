@@ -27,6 +27,11 @@ npm run preview  # serve the production build
 npm test         # run the simulation unit tests (Vitest)
 ```
 
+## Project roadmap
+
+See [Future Features and Realism Roadmap](docs/FUTURE_FEATURES.md) for completed
+realism milestones, work in progress, and prioritized future improvements.
+
 ## What you can do
 
 - **Orbit / pan / zoom** the engine with the mouse (left-drag orbit, right/middle-drag
@@ -40,6 +45,9 @@ npm test         # run the simulation unit tests (Vitest)
   ISA temperature offset (−20…+20 °C), plus overlay toggles (station labels,
   section labels, flow particles, temperature colors, velocity vectors),
   pause, reset-to-takeoff, reset-to-cruise.
+- **Hear** procedural engine audio driven by live spool speed, mass flow, thrust,
+  fuel flow, and exhaust velocity, with layered fan/compressor tones and staged
+  low-frequency jet roar.
 - **Read** live thrust, spool speeds (N1/N2), mass flows, fuel flow, bypass ratio,
   overall pressure ratio, compressor exit P/T, turbine inlet temperature, EGT,
   exhaust velocities, TSFC, and surge margin — with warnings for over-temperature,
@@ -65,6 +73,7 @@ src/
     engineLayout.ts          single source of truth for positions/radii
     educationalCopy.ts       station/section explanations + disclaimer
   geometry/        Procedural Three.js geometry (solid lofted blades, nacelle, …)
+  audio/           Procedural Web Audio engine sound synthesis
   util/            temperature→color scale, camera presets
   store/           Zustand store (inputs → engine solution, live spools, view)
   components/      React-three-fiber scene + DOM control/readout/chart panels

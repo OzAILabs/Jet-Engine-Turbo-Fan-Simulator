@@ -291,6 +291,17 @@ input.slider::-moz-range-thumb {
   font-weight: 600;
 }
 
+.audio-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.audio-volume {
+  margin-bottom: 0;
+}
+
 /* Checkbox toggles */
 .checkbox {
   display: flex;

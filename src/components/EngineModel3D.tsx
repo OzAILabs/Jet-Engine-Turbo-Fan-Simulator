@@ -10,6 +10,8 @@
  * shared explodeShiftX map so markers/labels stay consistent), hide the shells
  * and the flow effects, and let students see each module separated.
  */
+import { useEffect, useRef } from 'react';
+import * as THREE from 'three';
 import { useSimStore } from '../store/useSimStore';
 import { AXIS, explodeShiftX } from '../data/engineLayout';
 import { Nacelle } from './Nacelle';
@@ -36,13 +38,23 @@ const MODULE_CENTERS = {
 };
 
 export function EngineModel3D() {
+  const root = useRef<THREE.Group>(null!);
   const debugMode = useSimStore((s) => s.debugMode);
   const exploded = useSimStore((s) => s.viewMode === 'exploded');
 
   const off = (center: number): [number, number, number] => [exploded ? explodeShiftX(center) : 0, 0, 0];
 
+  useEffect(() => {
+    root.current.traverse((object) => {
+      if (object instanceof THREE.Mesh || object instanceof THREE.InstancedMesh) {
+        object.castShadow = true;
+        object.receiveShadow = true;
+      }
+    });
+  }, [exploded]);
+
   return (
-    <group>
+    <group ref={root}>
       {/* Two-spool shafts run the length of the engine; hide them when the
           modules are pulled apart so they don't dangle in the gaps. */}
       {!exploded && <Shafts />}

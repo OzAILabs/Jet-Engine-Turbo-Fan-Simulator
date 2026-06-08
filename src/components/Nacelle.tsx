@@ -56,7 +56,6 @@ export function Nacelle() {
       }),
     [],
   );
-
   // Decide which geometry and material settings to use for the current mode.
   // We mutate the shared material's transparency flags directly inside this
   // memo so they stay in sync with viewMode without creating new materials.
@@ -70,10 +69,11 @@ export function Nacelle() {
         return { shellGeo: shellFull, ductGeo: ductFull };
 
       case 'cutaway':
-        // Partial ring; show both faces since the cut exposes the inside.
-        material.transparent = true;
-        material.opacity = 0.35;
-        material.depthWrite = false;
+        // The remaining cowl is solid metal; only the removed wedge exposes
+        // the internals. Show both faces so the cut edge/interior wall reads.
+        material.transparent = false;
+        material.opacity = 1;
+        material.depthWrite = true;
         material.side = THREE.DoubleSide;
         return { shellGeo: shellCut, ductGeo: ductCut };
 

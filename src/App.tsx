@@ -8,11 +8,13 @@ import { ReadoutPanel } from './components/ReadoutPanel';
 import { ChartsPanel } from './components/ChartsPanel';
 import { WarningPanel } from './components/WarningPanel';
 import { CameraControlsPanel } from './components/CameraControlsPanel';
+import { EngineAudio } from './components/EngineAudio';
 import { DISCLAIMER } from './data/educationalCopy';
 
 export default function App() {
   return (
     <div className="app">
+      <EngineAudio />
       <div className="scene-layer">
         <EngineScene />
       </div>

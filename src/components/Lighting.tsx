@@ -15,8 +15,8 @@
  *                           hotter as the engine heats up, so the hot
  *                           section visibly "lights up" during operation.
  *
- * No shadows are enabled anywhere (cheaper, and the cutaway reads more
- * clearly without harsh self-shadowing).
+ * Soft shadows and an offline studio environment give the metal components
+ * weight while preserving the readable museum-cutaway presentation.
  */
 import { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
@@ -39,17 +39,33 @@ export function Lighting() {
 
   return (
     <>
-      {/* Flat base fill so shadowed faces never go fully black. */}
-      <ambientLight intensity={0.5} />
+      {/* Low base fill; direct lights and environment reflections do the shaping. */}
+      <ambientLight intensity={0.1} />
 
       {/* Sky tint above, cool dark ground below: gentle outdoor ambience. */}
-      <hemisphereLight color="#bcd3ff" groundColor="#20242c" intensity={0.6} />
+      <hemisphereLight color="#c5d7ef" groundColor="#15181d" intensity={0.28} />
 
-      {/* Key light: main shaping light from the upper front-right. */}
-      <directionalLight position={[8, 12, 6]} intensity={1.2} color="#ffffff" />
+      {/* Large soft key light: main shaping light from the upper front-right. */}
+      <directionalLight
+        position={[8, 12, 7]}
+        intensity={1.55}
+        color="#fff8ed"
+        castShadow
+        shadow-mapSize-width={2048}
+        shadow-mapSize-height={2048}
+        shadow-camera-left={-7}
+        shadow-camera-right={7}
+        shadow-camera-top={6}
+        shadow-camera-bottom={-6}
+        shadow-camera-near={1}
+        shadow-camera-far={30}
+        shadow-bias={-0.00025}
+        shadow-normalBias={0.025}
+        shadow-radius={4}
+      />
 
       {/* Cool fill from the opposite side to lift the shadow side. */}
-      <directionalLight position={[-7, 4, -7]} intensity={0.4} color="#88aaff" />
+      <directionalLight position={[-7, 5, -8]} intensity={0.42} color="#8eaee0" />
 
       {/* Warm glow near the combustor / exhaust; intensity tracks heat. */}
       <pointLight ref={warm} position={[1.6, 0.4, 0]} color="#ff7a3c" intensity={0.5} />

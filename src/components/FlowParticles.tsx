@@ -99,6 +99,7 @@ export function FlowParticles() {
   // Reactive toggles: presence of the whole effect and the color scheme.
   const showFlowParticles = useSimStore((s) => s.showFlowParticles);
   const showTempColors = useSimStore((s) => s.showTempColors);
+  const exhaustStyle = useSimStore((s) => s.exhaustStyle);
 
   // Refs to the four geometries so we can flip needsUpdate per frame.
   const bypassRef = useRef<THREE.BufferGeometry>(null!);
@@ -240,9 +241,16 @@ export function FlowParticles() {
     // (d) Exhaust: fade orange -> red along the plume as it cools.
     const exhaustHot = new THREE.Color('#ff8a3c');
     const exhaustCold = new THREE.Color('#ff3b2b');
+    const dramaticHot = new THREE.Color('#b8c5c9');
+    const dramaticCold = new THREE.Color('#536166');
     for (let i = 0; i < exhaust.count; i++) {
       const fade = exhaust.phases[i]; // farther downstream = cooler/redder
-      if (showTempColors) {
+      if (exhaustStyle === 'shader') {
+        // Dramatic is a high-speed heat-distortion plume, not an afterburner.
+        // Keep the optional educational particles neutral so they do not
+        // reintroduce an orange flame over the refractive effect.
+        c.copy(dramaticHot).lerp(dramaticCold, fade);
+      } else if (showTempColors) {
         // ~1100K near the exit cooling toward ~600K downstream.
         temperatureColor(lerp(1100, 600, fade), c);
       } else {
@@ -256,7 +264,7 @@ export function FlowParticles() {
     coreRef.current.attributes.color.needsUpdate = true;
     combustorRef.current.attributes.color.needsUpdate = true;
     exhaustRef.current.attributes.color.needsUpdate = true;
-  }, [systems, showTempColors, scratchVec, scratchColor]);
+  }, [systems, showTempColors, exhaustStyle, scratchVec, scratchColor]);
 
   // ---- Per-frame advance -------------------------------------------------
   useFrame((_state, delta) => {
@@ -282,15 +290,14 @@ export function FlowParticles() {
     if (bypassMatRef.current) bypassMatRef.current.opacity = ductedVis;
     if (coreMatRef.current) coreMatRef.current.opacity = ductedVis;
     if (combustorMatRef.current) combustorMatRef.current.opacity = ductedVis;
-    if (exhaustMatRef.current) exhaustMatRef.current.opacity = exhaustVis;
+    // Dramatic owns the external plume with a refractive shader. Suppress the
+    // separate educational exhaust dots so they do not turn it into a dark or
+    // fiery particle cloud; internal flow particles remain visible.
+    if (exhaustMatRef.current) exhaustMatRef.current.opacity = exhaustStyle === 'shader' ? 0 : exhaustVis;
   });
 
-  // Bail out cheaply when the effect is disabled. (Hooks above always run, so
-  // the rules of hooks are respected regardless of this early return.)
-  if (!showFlowParticles) return null;
-
   return (
-    <group>
+    <group visible={showFlowParticles}>
       <points frustumCulled={false}>
         <bufferGeometry ref={bypassRef}>
           <bufferAttribute attach="attributes-position" args={[systems.bypass.positions, 3]} />

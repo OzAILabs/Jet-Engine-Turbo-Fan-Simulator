@@ -1,5 +1,5 @@
 /**
- * ExhaustPlume — a GPU-driven torrent of fast, hot, turbulent jet exhaust.
+ * ExhaustShader — a GPU-driven, turbulent commercial turbofan exhaust plume.
  *
  * This REPLACES the old faint translucent cone. There is no static cone mesh
  * here: the plume is a single THREE.Points cloud driven entirely by one custom
@@ -7,21 +7,21 @@
  * is advected in the VERTEX shader from a uniform time plus per-particle
  * attributes (seed / phase / lane), recycled with fract(phase + time * speed),
  * displaced by smooth sum-of-sines turbulence so the shear layer billows, and
- * elongated ALONG the screen-projected flow direction to read as motion blur
- * (faster jet -> longer streaks, denser, longer plume).
+ * softened along the screen-projected flow direction to read as motion blur
+ * without resolving into straight particle streaks.
  *
  * The FRAGMENT shader gives each particle a soft round/streaked falloff, an
- * incandescent hot->cool color from a normalized downstream coordinate, and —
- * when the core nozzle is choked or thrust is high — a chain of bright
- * MACH DIAMONDS as sin()-banded incandescent nodes near the core axis just aft
- * of the nozzle. Plume length, density and brightness all scale with thrust,
- * and the whole effect fades to nothing when the engine is shut down.
+ * The plume is intentionally neutral, translucent, and irregular: commercial
+ * turbofan exhaust is mainly visible as heat-distorted air, not flame. Plume
+ * length, density and distortion all scale with thrust, and the whole effect
+ * fades to nothing when the engine is shut down.
  *
  * Live engine data is read non-reactively inside useFrame via getState() and
  * pushed into the material uniforms (mutated in place — never reallocated).
  */
 import { useMemo, useRef } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber';
+import { useFBO } from '@react-three/drei';
 import * as THREE from 'three';
 import { useSimStore } from '../store/useSimStore';
 import { AXIS } from '../data/engineLayout';
@@ -94,7 +94,7 @@ const VERT = /* glsl */ `
   varying float vT;        // 0..1 normalized downstream coordinate
   varying float vCore;     // 1.0 for core particles, 0.0 for bypass
   varying float vBright;   // per-particle brightness (vis * life)
-  varying float vDiamond;  // 0..1 shock-diamond intensity at this particle
+  varying float vNoise;    // irregular density/distortion strength
   varying vec2  vFlowDir;  // screen-space flow direction (for streak stretch)
   varying float vStretch;  // streak elongation factor (>=1)
 
@@ -121,15 +121,17 @@ const VERT = /* glsl */ `
     // Axial position: rush straight aft along +X.
     float x = start + p * len;
 
-    // The shear layer expands as it travels: cone half-angle grows downstream,
-    // wider/softer for the bypass jet, tight near the core nozzle.
-    float spread = mix(1.35, 1.15, isCore);
-    float r = baseR * (0.22 + p * spread) * (0.35 + 0.9 * aRadial);
+    // Keep a dense, almost invisible center and concentrate visible distortion
+    // in the turbulent shear layers. Multiple seed-dependent terms prevent a
+    // clean cone edge or radial lanes.
+    float spread = mix(1.18, 0.92, isCore);
+    float radialJitter = 0.82 + 0.28 * wobble(aSeed * 31.7, aSeed * 17.1 + p * 8.3, aSeed * 9.2 - p * 13.0);
+    float r = baseR * (0.18 + p * spread) * (0.24 + 0.96 * aRadial) * radialJitter;
 
     // Swirl + turbulent billowing (smooth, time-varying sum of sines).
-    float ang = aSeed * 6.2831853 + p * mix(2.0, 3.4, isCore) + uTime * 0.7;
-    float amp = uTurb * baseR * (0.18 + 1.1 * p);
-    float tx = uTime * (1.6 + isCore * 0.8);
+    float ang = aSeed * 6.2831853 + p * mix(1.1, 1.8, isCore);
+    float amp = uTurb * baseR * (0.08 + 0.72 * p);
+    float tx = uTime * (3.4 + isCore * 1.4);
     float wy = wobble(aSeed * 12.7 + p * 11.0 + tx,
                       aSeed * 5.1  + p * 6.3  + tx * 0.7,
                       aSeed * 21.3 + p * 17.0 + tx * 1.3);
@@ -143,20 +145,20 @@ const VERT = /* glsl */ `
 
     vec3 worldPos = vec3(x, y, z);
 
-    // --- Shock / Mach diamonds ------------------------------------------
-    // A periodic chain of bright incandescent nodes hugging the core axis just
-    // aft of the nozzle. Bands come from sin() of the axial coordinate; they
-    // decay downstream and tighten/brighten with choke + thrust.
-    float aft = x - ${CORE_START.toFixed(3)};
-    float bands = sin(aft * 14.0);     // spacing ~2*pi/14 ~= 0.45 units
-    bands = pow(max(bands, 0.0), 6.0); // sharp bright nodes between dark gaps
-    float nearAxis = exp(-axisDist * axisDist * 26.0); // only on the axis
-    float decay = exp(-aft * 0.85);                    // fade with distance
-    vDiamond = isCore * uChoked * bands * nearAxis * decay * step(0.0, aft);
+    // Irregular pockets appear and disappear as they rush downstream. There
+    // are deliberately no axial bands or shock diamonds.
+    float pocketA = wobble(aSeed * 41.3 + p * 19.0 - tx * 1.4,
+                           aSeed * 13.7 - p * 31.0 + tx * 0.8,
+                           aSeed * 67.1 + p * 7.0 - tx * 2.1);
+    float pocketB = wobble(aSeed * 23.9 - p * 11.0 + tx * 1.7,
+                           aSeed * 53.2 + p * 27.0 - tx,
+                           aSeed * 5.7 - p * 43.0 + tx * 0.6);
+    vNoise = smoothstep(-0.42, 0.58, pocketA * 0.65 + pocketB * 0.35);
 
-    // Life fade: brightest at the nozzle, fading aft. Diamonds re-light it.
-    float life = 1.0 - p;
-    vBright = vis * (0.16 + 0.74 * life) + vDiamond * 1.1;
+    // Visible density is strongest in the shear layer and breaks apart aft.
+    float life = 1.0 - smoothstep(0.18, 1.0, p);
+    float shear = smoothstep(baseR * 0.08, baseR * (0.9 + p), axisDist);
+    vBright = vis * (0.18 + 0.82 * vNoise) * (0.35 + 0.65 * shear) * (0.32 + 0.68 * life);
 
     // --- Projection + screen-space flow direction (for motion blur) -----
     vec4 mvPos = modelViewMatrix * vec4(worldPos, 1.0);
@@ -173,14 +175,15 @@ const VERT = /* glsl */ `
     float dlen = length(dir);
     vFlowDir = dlen > 1e-5 ? dir / dlen : vec2(1.0, 0.0);
 
-    // Streak length grows with speed (units/s) — this is the core SPEED cue.
-    vStretch = 1.0 + clamp(speed * 0.9, 0.0, 6.5) * mix(0.8, 1.25, isCore);
+    // Speed broadens the soft directional blur, but it stays short enough that
+    // individual particles never resolve into straight lines.
+    vStretch = 1.0 + clamp(speed * 0.16, 0.0, 1.7) * mix(0.7, 1.0, isCore);
 
     // Point size: bigger near the nozzle, attenuated by distance, scaled by
     // device pixel ratio. Hotter/denser at high heat. The fragment shader
     // applies the directional stretch within this (square) point sprite, so we
     // size the sprite to fit the elongated streak.
-    float sizeBase = mix(4.2, 2.8, isCore) * (0.55 + 0.9 * life) * (0.6 + 0.7 * uHeat);
+    float sizeBase = mix(5.8, 4.2, isCore) * (0.72 + 0.65 * vNoise) * (0.78 + 0.35 * uHeat);
     float pointPx = sizeBase * uPixelRatio * (300.0 / max(-mvPos.z, 1.0));
     gl_PointSize = clamp(pointPx * vStretch * uSizeBoost, 1.0, 120.0);
   }
@@ -189,18 +192,20 @@ const VERT = /* glsl */ `
 const FRAG = /* glsl */ `
   precision highp float;
 
-  uniform vec3 uHotColor;   // incandescent near-nozzle color
-  uniform vec3 uMidColor;   // orange mid plume
-  uniform vec3 uCoolColor;  // deep-red cooled tail
-  uniform vec3 uBypassHot;  // bypass near-white/grey hot
-  uniform vec3 uBypassCool; // bypass cool grey-blue
-  uniform vec3 uDiamondCol; // shock-diamond incandescence (near white)
+  uniform vec3 uHotColor;
+  uniform vec3 uMidColor;
+  uniform vec3 uCoolColor;
+  uniform vec3 uBypassHot;
+  uniform vec3 uBypassCool;
   uniform float uOpacity;   // global fade (engine running state)
+  uniform sampler2D uSceneTexture;
+  uniform vec2 uResolution;
+  uniform float uDistort;
 
   varying float vT;
   varying float vCore;
   varying float vBright;
-  varying float vDiamond;
+  varying float vNoise;
   varying vec2  vFlowDir;
   varying float vStretch;
 
@@ -216,17 +221,18 @@ const FRAG = /* glsl */ `
     float along = dot(pc, f);
     float across = dot(pc, perp);
 
-    // Comet/streak falloff: compress along the flow by vStretch so a fast
-    // particle reads as an elongated motion-blurred streak; soft round across.
+    // Soft directional blur. A pair of offset lobes makes the plume feel fast
+    // while avoiding the crisp capsule/streak silhouette of the old effect.
     float a = along / vStretch;
     float d2 = a * a + across * across;
-    float fall = exp(-d2 * 3.2);
-    // Brighter, tighter head toward the leading (downstream) end of the streak.
-    float head = exp(-pow((along - 0.55) * 2.2, 2.0)) * 0.5;
-    float mask = clamp(fall + head, 0.0, 1.0);
+    float fall = exp(-d2 * 2.25);
+    float wake = exp(-(pow((along + 0.32) / (vStretch + 0.4), 2.0) + across * across) * 3.0);
+    float edgeBreakup = 0.72 + 0.28 * sin((along * 3.7 + across * 5.1 + vNoise * 4.0) * 3.14159);
+    float mask = clamp((fall * 0.72 + wake * 0.28) * edgeBreakup, 0.0, 1.0);
     if (mask < 0.004) discard;
 
-    // Incandescent hot->cool gradient along the downstream coordinate.
+    // Neutral warm/cool air tones. These remain deliberately desaturated so
+    // the effect reads as distorted hot air rather than combustion flame.
     vec3 hotCool;
     if (vCore > 0.5) {
       vec3 mid = mix(uHotColor, uMidColor, smoothstep(0.0, 0.4, vT));
@@ -235,14 +241,26 @@ const FRAG = /* glsl */ `
       hotCool = mix(uBypassHot, uBypassCool, smoothstep(0.0, 1.0, vT));
     }
 
-    // Shock diamonds blow the color toward incandescent white at the nodes.
-    vec3 col = mix(hotCool, uDiamondCol, clamp(vDiamond, 0.0, 1.0));
+    // Sample the already-rendered scene at several irregular offsets. Blending
+    // the displaced/blurred scene back over itself creates true heat shimmer:
+    // the plume remains see-through instead of becoming smoke or a flame.
+    vec2 screenUv = gl_FragCoord.xy / uResolution;
+    vec2 flowOffset = f * uDistort * (0.45 + vNoise * 0.8);
+    vec2 crossOffset = perp * uDistort * (vNoise - 0.5) * 1.8;
+    vec2 texelGuard = 2.0 / uResolution;
+    vec2 uvA = clamp(screenUv + flowOffset + crossOffset, texelGuard, 1.0 - texelGuard);
+    vec2 uvB = clamp(screenUv - flowOffset * 0.65 + crossOffset * 0.5, texelGuard, 1.0 - texelGuard);
+    vec2 uvC = clamp(screenUv + perp * uDistort * 1.2, texelGuard, 1.0 - texelGuard);
+    vec3 refracted = texture2D(uSceneTexture, uvA).rgb;
+    refracted += texture2D(uSceneTexture, uvB).rgb;
+    refracted += texture2D(uSceneTexture, uvC).rgb;
+    refracted *= 0.333333;
 
-    float alpha = mask * vBright * uOpacity;
-    // Additive blend: scale color by brightness for a hot, glowing core
-    // (kept moderate so the streak + shock-diamond structure shows through
-    // instead of saturating to a white blob).
-    gl_FragColor = vec4(col * (0.5 + 0.4 * vBright), alpha);
+    // A tiny neutral tint helps the distortion remain legible against a plain
+    // background without turning the plume into a grey cloud.
+    vec3 col = mix(refracted, hotCool, 0.12 + 0.1 * vNoise);
+    float alpha = mask * vBright * uOpacity * 0.52;
+    gl_FragColor = vec4(col, alpha);
     if (gl_FragColor.a < 0.003) discard;
   }
 `;
@@ -253,13 +271,24 @@ const FRAG = /* glsl */ `
 
 /**
  * GPU plume. Two looks share the SAME shape/motion logic:
- *   - mode="flame" (Dramatic): toned-down incandescent jet with shock diamonds.
+ *   - mode="flame" (Dramatic): dense translucent turbulent hot-air plume.
  *   - mode="haze"  (Realistic): the same plume rendered as a desaturated, soft,
  *     translucent heat-shimmer BLUR — no flame color, no diamonds.
  */
 export function ExhaustShader({ mode = 'flame' }: { mode?: 'flame' | 'haze' }) {
   const pointsRef = useRef<THREE.Points>(null!);
   const matRef = useRef<THREE.ShaderMaterial>(null!);
+  const { size, gl } = useThree();
+  const pixelRatio = Math.min(gl.getPixelRatio(), 2);
+  const sceneTarget = useFBO(
+    Math.max(1, Math.floor(size.width * pixelRatio * 0.5)),
+    Math.max(1, Math.floor(size.height * pixelRatio * 0.5)),
+    {
+      depthBuffer: true,
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+    },
+  );
 
   // --- Build geometry + attributes once -----------------------------------
   const geometry = useMemo(() => {
@@ -313,14 +342,16 @@ export function ExhaustShader({ mode = 'flame' }: { mode?: 'flame' | 'haze' }) {
       uHeat: { value: 0 },
       uSizeBoost: { value: 1 },
       uOpacity: { value: 0 },
+      uSceneTexture: { value: sceneTarget.texture },
+      uResolution: { value: new THREE.Vector2(1, 1) },
+      uDistort: { value: 0.002 },
       uHotColor: { value: new THREE.Color(hot.r, hot.g, hot.b) },
       uMidColor: { value: new THREE.Color(mid.r, mid.g, mid.b) },
       uCoolColor: { value: new THREE.Color(cool.r, cool.g, cool.b) },
       uBypassHot: { value: new THREE.Color('#cfe0ee') },
       uBypassCool: { value: new THREE.Color('#243140') },
-      uDiamondCol: { value: new THREE.Color('#fff3da') },
     };
-  }, []);
+  }, [sceneTarget.texture]);
 
   // Two color palettes, built once. Flame = incandescent (from the heat scale);
   // haze = desaturated warm-white (so the plume reads as hot translucent air,
@@ -333,7 +364,13 @@ export function ExhaustShader({ mode = 'flame' }: { mode?: 'flame' | 'haze' }) {
     temperatureColor(980, fm);
     temperatureColor(740, fc);
     return {
-      flame: { hot: fh, mid: fm, cool: fc, bypHot: new THREE.Color('#cfe0ee'), bypCool: new THREE.Color('#243140') },
+      flame: {
+        hot: new THREE.Color('#d5d9d7'),
+        mid: new THREE.Color('#929997'),
+        cool: new THREE.Color('#4b5355'),
+        bypHot: new THREE.Color('#c4cccf'),
+        bypCool: new THREE.Color('#586268'),
+      },
       haze: {
         hot: new THREE.Color(0.95, 0.86, 0.74), // warm off-white hot air
         mid: new THREE.Color(0.74, 0.69, 0.63),
@@ -344,7 +381,7 @@ export function ExhaustShader({ mode = 'flame' }: { mode?: 'flame' | 'haze' }) {
     };
   }, []);
 
-  useFrame((_state, delta) => {
+  useFrame((state, delta) => {
     const dt = Math.min(delta, 0.05);
     const mat = matRef.current;
     if (!mat) return;
@@ -392,20 +429,39 @@ export function ExhaustShader({ mode = 'flame' }: { mode?: 'flame' | 'haze' }) {
       u.uTurb.value = 1.7 + 0.8 * thrustFrac; // strong, wispy boil/shimmer
       u.uSizeBoost.value = 2.0; // soft sprites for a blurred look (not a blob)
     } else {
-      // Dramatic flame: brighter, with shock diamonds.
-      u.uCoreVis.value = clamp(0.12 + thrustFrac * 0.42, 0, 0.58) * run * lit;
-      u.uBypassVis.value = clamp(run * 1.4, 0, 1) * 0.4 * lit;
-      const chokeBoost = engine.coreNozzleChoked ? 1 : 0;
-      u.uChoked.value = clamp(chokeBoost * (0.5 + 0.5 * thrustFrac) + (thrustFrac - 0.6) * 1.4, 0, 1.4) * run * lit;
-      u.uHeat.value = heatFraction(lerp(620, 1850, thrustFrac)) * run;
-      u.uTurb.value = 0.55 + 0.7 * thrustFrac;
-      u.uSizeBoost.value = 1.0;
+      // Dramatic commercial-jet plume: much denser and more active than the
+      // Realistic option, but still translucent, neutral, and flame-free.
+      u.uCoreVis.value = clamp(0.42 + thrustFrac * 0.48, 0, 0.9) * run * lit;
+      u.uBypassVis.value = clamp(0.34 + run * 0.5, 0, 0.82) * lit;
+      u.uChoked.value = 0;
+      u.uHeat.value = heatFraction(lerp(620, 1250, thrustFrac)) * run;
+      u.uTurb.value = 1.15 + 1.25 * thrustFrac;
+      u.uSizeBoost.value = 2.15;
     }
 
     // Global fade. Squaring run via the product makes the spool-down tail die
     // cleanly to nothing at shutdown.
     u.uOpacity.value = clamp(Math.min(run * 1.3, 0.25 + thrustFrac) * run, 0, 1);
-  });
+    u.uResolution.value.set(size.width * pixelRatio, size.height * pixelRatio);
+    u.uDistort.value = haze ? 0 : (0.004 + thrustFrac * 0.012) * run;
+
+    // Capture the scene without this plume. The regular canvas render that
+    // follows draws the refractive particles over this clean background.
+    if (!haze && pointsRef.current) {
+      const oldTarget = state.gl.getRenderTarget();
+      const oldToneMapping = state.gl.toneMapping;
+      pointsRef.current.visible = false;
+      // The captured scene is sampled by a material in the final render, where
+      // tone mapping is applied. Capture it linear to avoid darkening it twice.
+      state.gl.toneMapping = THREE.NoToneMapping;
+      state.gl.setRenderTarget(sceneTarget);
+      state.gl.clear();
+      state.gl.render(state.scene, state.camera);
+      state.gl.setRenderTarget(oldTarget);
+      state.gl.toneMapping = oldToneMapping;
+      pointsRef.current.visible = true;
+    }
+  }, -1);
 
   return (
     <points ref={pointsRef} geometry={geometry} frustumCulled={false}>
@@ -417,9 +473,7 @@ export function ExhaustShader({ mode = 'flame' }: { mode?: 'flame' | 'haze' }) {
         transparent
         depthWrite={false}
         depthTest
-        // Flame glows (additive); haze is a translucent veil (alpha) so the many
-        // overlapping sprites form a soft blur instead of saturating to white.
-        blending={mode === 'haze' ? THREE.NormalBlending : THREE.AdditiveBlending}
+        blending={THREE.NormalBlending}
       />
     </points>
   );

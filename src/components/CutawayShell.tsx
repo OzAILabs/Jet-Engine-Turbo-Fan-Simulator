@@ -16,7 +16,7 @@
  * viewMode, matching the rest of the engine's shells:
  *   full        -> opaque brushed metal
  *   transparent -> faint ghost so internals show through
- *   cutaway      -> partial ring, semi-transparent, double-sided
+ *   cutaway      -> partial ring, opaque metal, double-sided
  *   exploded     -> nearly invisible ghost
  *
  * The internal rotating parts are always rendered elsewhere; only this shell's
@@ -72,18 +72,17 @@ export function CutawayShell() {
       }),
     [],
   );
-
   // Pick geometry + appearance for the current view mode.
   const { geometry, opacity, transparent, side, depthWrite } = useMemo(() => {
     switch (viewMode) {
       case 'cutaway':
-        // Partial ring, semi-transparent, both faces lit so the cut edge reads.
+        // Solid partial ring: only the removed wedge exposes the core.
         return {
           geometry: cutawayGeometry,
-          opacity: 0.4,
-          transparent: true,
+          opacity: 1,
+          transparent: false,
           side: THREE.DoubleSide,
-          depthWrite: false,
+          depthWrite: true,
         };
       case 'transparent':
         return {

@@ -12,6 +12,7 @@ import { useSimStore } from '../store/useSimStore';
 import { CameraRig } from './CameraRig';
 import { Lighting } from './Lighting';
 import { EngineModel3D } from './EngineModel3D';
+import { RealisticEnvironment } from './RealisticEnvironment';
 
 /** Advances spool inertia once per frame. */
 function PhysicsTicker() {
@@ -24,13 +25,15 @@ export function EngineScene() {
   return (
     <Canvas
       dpr={[1, 2]}
-      gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.05 }}
+      shadows="soft"
+      gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 0.96 }}
       frameloop="always"
     >
       <color attach="background" args={['#0a0d12']} />
       <fog attach="fog" args={['#0a0d12', 22, 60]} />
 
       <CameraRig />
+      <RealisticEnvironment />
       <Lighting />
 
       {/* Subtle museum "floor" grid well below the engine. */}
@@ -38,6 +41,10 @@ export function EngineScene() {
         args={[60, 60, '#2a3340', '#161c24']}
         position={[0, -2.4, 0]}
       />
+      <mesh position={[0, -2.405, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <planeGeometry args={[60, 60]} />
+        <shadowMaterial transparent opacity={0.34} />
+      </mesh>
 
       <Suspense fallback={null}>
         <EngineModel3D />

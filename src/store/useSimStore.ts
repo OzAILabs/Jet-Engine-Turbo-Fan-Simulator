@@ -65,6 +65,8 @@ export interface SimStore {
   showFlowParticles: boolean;
   showTempColors: boolean;
   showVelocityVectors: boolean;
+  soundEnabled: boolean;
+  soundVolume: number;
 
   // Selection
   selectedStation: StationId | null;
@@ -88,6 +90,8 @@ export interface SimStore {
   togglePaused: () => void;
   toggleDebug: () => void;
   toggle: (key: ToggleKey) => void;
+  setSoundEnabled: (enabled: boolean) => void;
+  setSoundVolume: (volume: number) => void;
 
   selectStation: (id: StationId | null) => void;
   selectSection: (id: string | null) => void;
@@ -126,6 +130,8 @@ export const useSimStore = create<SimStore>((set, get) => ({
   showFlowParticles: true,
   showTempColors: true,
   showVelocityVectors: false,
+  soundEnabled: false,
+  soundVolume: 0.55,
 
   selectedStation: null,
   selectedSection: null,
@@ -175,6 +181,8 @@ export const useSimStore = create<SimStore>((set, get) => ({
   togglePaused: () => set((s) => ({ paused: !s.paused })),
   toggleDebug: () => set((s) => ({ debugMode: !s.debugMode })),
   toggle: (key) => set((s) => ({ [key]: !s[key] }) as Partial<SimStore>),
+  setSoundEnabled: (enabled) => set({ soundEnabled: enabled }),
+  setSoundVolume: (volume) => set({ soundVolume: clamp(volume, 0, 1) }),
 
   selectStation: (id) => set({ selectedStation: id, selectedSection: null }),
   selectSection: (id) => set({ selectedSection: id, selectedStation: null }),

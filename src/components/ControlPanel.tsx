@@ -13,6 +13,7 @@
  */
 import { useSimStore } from '../store/useSimStore';
 import type { ViewMode, ExhaustStyle } from '../store/useSimStore';
+import { engineAudio } from '../audio/engineAudio';
 
 // Exhaust rendering styles shown in a segmented control.
 const EXHAUST_STYLES: { style: ExhaustStyle; label: string }[] = [
@@ -52,6 +53,8 @@ export function ControlPanel() {
   const viewMode = useSimStore((s) => s.viewMode);
   const exhaustStyle = useSimStore((s) => s.exhaustStyle);
   const paused = useSimStore((s) => s.paused);
+  const soundEnabled = useSimStore((s) => s.soundEnabled);
+  const soundVolume = useSimStore((s) => s.soundVolume);
 
   const showStationLabels = useSimStore((s) => s.showStationLabels);
   const showSectionLabels = useSimStore((s) => s.showSectionLabels);
@@ -70,6 +73,8 @@ export function ControlPanel() {
   const togglePaused = useSimStore((s) => s.togglePaused);
   const resetToTakeoff = useSimStore((s) => s.resetToTakeoff);
   const resetToCruise = useSimStore((s) => s.resetToCruise);
+  const setSoundEnabled = useSimStore((s) => s.setSoundEnabled);
+  const setSoundVolume = useSimStore((s) => s.setSoundVolume);
 
   // Map each toggle key to its live boolean so the list render stays declarative.
   const toggleValues: Record<(typeof TOGGLES)[number]['key'], boolean> = {
@@ -223,6 +228,36 @@ export function ControlPanel() {
           <button className="btn" onClick={() => resetToCruise()}>
             Reset Cruise
           </button>
+        </div>
+
+        <div className="audio-controls">
+          <button
+            className={`btn${soundEnabled ? ' is-active' : ''}`}
+            onClick={() => {
+              const next = !soundEnabled;
+              setSoundEnabled(next);
+              void engineAudio.setEnabled(next);
+            }}
+          >
+            {soundEnabled ? 'Mute Engine' : 'Enable Engine Sound'}
+          </button>
+
+          <div className="field audio-volume">
+            <div className="field-head">
+              <span className="field-label">Volume</span>
+              <span className="field-value">{Math.round(soundVolume * 100)} %</span>
+            </div>
+            <input
+              className="slider"
+              type="range"
+              aria-label="Engine sound volume"
+              min={0}
+              max={100}
+              step={1}
+              value={soundVolume * 100}
+              onChange={(e) => setSoundVolume(+e.target.value / 100)}
+            />
+          </div>
         </div>
       </div>
     </div>
