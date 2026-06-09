@@ -30,7 +30,9 @@ export const RADII = {
   coreHpcExit: 0.42,
   combustorOuter: 0.55,
   hptOuter: 0.6,
-  lptOuter: 0.78,
+  // The LP turbine flares into a pronounced rear cone (GE90 has 6 growing
+  // stages); this is the last-stage tip the core casing must clear.
+  lptOuter: 0.88,
   coreNozzleOuter: 0.55,
   coreNozzleExit: 0.34,
   plugTip: 0.12,

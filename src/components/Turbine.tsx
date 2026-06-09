@@ -129,7 +129,9 @@ export function Turbine() {
       const t = lptStages > 1 ? i / (lptStages - 1) : 0;
       const growth = lerp(0.3, 1.0, t);
       const hubRadius = lerp(0.45, 0.5, t);
-      const tipRadius = lerp(0.66, RADII.lptOuter, t); // up to 0.78
+      // Flares from the HPT-exit radius (~0.60) out to the big last-stage tip,
+      // giving the LPT its distinctive growing rear cone.
+      const tipRadius = lerp(0.6, RADII.lptOuter, t); // 0.60 -> 0.88
       const geometry = createTurbineBladeGeometry({ hubRadius, tipRadius, growth });
       const x = AXIS.lptStart + slot * (i + 0.5);
       stages.push({ geometry, x });
