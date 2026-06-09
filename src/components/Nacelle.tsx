@@ -19,6 +19,7 @@ import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { createNacelleShell, createBypassDuctInner } from '../geometry/nacelleGeometry';
 import { CUTAWAY } from '../geometry/annularSection';
+import { CutawayEdges } from './CutawayEdges';
 import { useSimStore } from '../store/useSimStore';
 
 export function Nacelle() {
@@ -102,6 +103,14 @@ export function Nacelle() {
 
       {/* Inner bypass-duct wall */}
       <mesh geometry={ductGeo} material={material} />
+
+      {/* GE-style blue outline on the cut edges (cutaway mode only). */}
+      {viewMode === 'cutaway' && (
+        <>
+          <CutawayEdges geometry={shellCut} />
+          <CutawayEdges geometry={ductCut} />
+        </>
+      )}
     </group>
   );
 }

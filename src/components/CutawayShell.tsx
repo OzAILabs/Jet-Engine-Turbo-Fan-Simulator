@@ -26,6 +26,7 @@ import { useMemo } from 'react';
 import * as THREE from 'three';
 import { useSimStore } from '../store/useSimStore';
 import { CUTAWAY, createLatheAlongX } from '../geometry/annularSection';
+import { CutawayEdges } from './CutawayEdges';
 import { RADII, AXIS } from '../data/engineLayout';
 
 export function CutawayShell() {
@@ -108,15 +109,19 @@ export function CutawayShell() {
   if (viewMode === 'exploded') return null;
 
   return (
-    <mesh geometry={geometry}>
-      <primitive
-        object={material}
-        attach="material"
-        transparent={transparent}
-        opacity={opacity}
-        side={side}
-        depthWrite={depthWrite}
-      />
-    </mesh>
+    <>
+      <mesh geometry={geometry}>
+        <primitive
+          object={material}
+          attach="material"
+          transparent={transparent}
+          opacity={opacity}
+          side={side}
+          depthWrite={depthWrite}
+        />
+      </mesh>
+      {/* GE-style blue outline on the cut edges (cutaway mode only). */}
+      {viewMode === 'cutaway' && <CutawayEdges geometry={cutawayGeometry} />}
+    </>
   );
 }
