@@ -143,19 +143,25 @@ export function createBladeGeometry(params: BladeParams): THREE.BufferGeometry {
   return geometry;
 }
 
-/** Large, wide-chord, swept fan blade reminiscent of a composite GE90 blade. */
+/**
+ * Large, very wide-chord composite fan blade in the spirit of the GE90's 22
+ * carbon-fibre blades. The chord is broad (the blades nearly overlap head-on);
+ * the sweep is kept moderate so the WIDE tip's trailing edge does not march aft
+ * into the fan outlet guide vanes (the chord widens forward — a scimitar lean —
+ * rather than reaching further back).
+ */
 export function createFanBladeGeometry(hubRadius: number, tipRadius: number): THREE.BufferGeometry {
   return createBladeGeometry({
     radiusInner: hubRadius,
     radiusOuter: tipRadius,
-    chordRoot: 0.42,
-    chordTip: 0.62,
-    sweep: 0.45,
-    twistRootDeg: 52,
-    twistTipDeg: 14,
-    thickness: 0.12,
+    chordRoot: 0.52,
+    chordTip: 0.78,
+    sweep: 0.34,
+    twistRootDeg: 54,
+    twistTipDeg: 12,
+    thickness: 0.11,
     camber: 0.06,
-    segmentsRadial: 18,
-    segmentsChord: 14,
+    segmentsRadial: 20,
+    segmentsChord: 16,
   });
 }
