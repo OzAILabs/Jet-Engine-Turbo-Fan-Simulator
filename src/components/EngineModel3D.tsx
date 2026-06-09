@@ -16,6 +16,7 @@ import { useSimStore } from '../store/useSimStore';
 import { AXIS, explodeShiftX } from '../data/engineLayout';
 import { Nacelle } from './Nacelle';
 import { CutawayShell } from './CutawayShell';
+import { BypassStruts } from './BypassStruts';
 import { Fan } from './Fan';
 import { Compressor } from './Compressor';
 import { Combustor } from './Combustor';
@@ -79,6 +80,8 @@ export function EngineModel3D() {
       {/* Casings / shells (transparency & cutaway handled inside; they hide
           themselves in exploded mode so there is no floating "ghost" shell). */}
       <CutawayShell />
+      {/* Fan-frame structural struts spanning the bypass duct, aft of the OGVs. */}
+      <BypassStruts />
       <Nacelle />
 
       {/* Flow visualization follows the assembled engine, so hide it when
