@@ -87,7 +87,7 @@ export function CutawayShell() {
       case 'transparent':
         return {
           geometry: fullGeometry,
-          opacity: 0.18,
+          opacity: 0.09,
           transparent: true,
           side: THREE.FrontSide,
           depthWrite: false,

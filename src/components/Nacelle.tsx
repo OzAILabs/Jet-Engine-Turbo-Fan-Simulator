@@ -62,8 +62,11 @@ export function Nacelle() {
   const { shellGeo, ductGeo } = useMemo(() => {
     switch (viewMode) {
       case 'transparent':
+        // Very faint: the cowl (DoubleSide) and the bypass-duct inner wall both
+        // use this material, and they stack with the core casing — so keep each
+        // layer low or they composite into a milky, near-opaque shell.
         material.transparent = true;
-        material.opacity = 0.16;
+        material.opacity = 0.07;
         material.depthWrite = false;
         material.side = THREE.DoubleSide;
         return { shellGeo: shellFull, ductGeo: ductFull };

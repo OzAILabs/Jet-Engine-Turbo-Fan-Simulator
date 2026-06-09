@@ -22,7 +22,10 @@ export const RADII = {
   // gives room for a thick, rounded inlet lip and a steady front-to-back taper.
   nacelleOuter: 1.85, // ~3.7 m max nacelle diameter
   /** Outer radius of the core casing at various axial locations. */
-  coreLpcOuter: 0.62,
+  // ~0.67 m (1.34 m dia) ≈ the real GE90 booster inlet, sized from BPR≈9: the
+  // core swallows ~10% of the fan flow, giving a booster tip radius ~0.64 m with
+  // a little casing clearance outside it.
+  coreLpcOuter: 0.67,
   coreHpcOuter: 0.5,
   coreHpcExit: 0.42,
   combustorOuter: 0.55,

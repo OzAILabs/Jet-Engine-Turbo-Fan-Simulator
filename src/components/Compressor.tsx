@@ -34,6 +34,16 @@ const HPC_BLADE_COUNT = 46;
 /** Tiny axial gap so an interleaved stator sits just behind its rotor. */
 const STATOR_OFFSET = 0.06;
 
+/**
+ * The booster (LPC) rotor rows are packed into the AFT part of the LPC casing,
+ * not the whole [lpcStart, lpcEnd] span. This frees ~0.36 m at the front of the
+ * core — just behind the fan — to mount the large fan Outlet Guide Vanes (OGVs,
+ * built in Fan.tsx) in FRONT of the first booster rotor, without lengthening the
+ * engine. The static core drum and casing still begin at AXIS.lpcStart, so the
+ * OGVs have a surface to sit over; only the blade rows move.
+ */
+const BOOSTER_ROTOR_FRONT = AXIS.lpcStart + 0.36; // ≈ -2.09
+
 export function Compressor() {
   // --- Core drum under the blades ----------------------------------------
   // A single static frustum from r=0.5 at lpcStart down to r=0.34 at hpcEnd.
@@ -63,10 +73,12 @@ export function Compressor() {
   );
 
   // --- Booster (LPC) blade geometries ------------------------------------
-  // 4 rotor rows evenly spaced over [lpcStart, lpcEnd]; compactness ramps
-  // 0.0 -> 0.4 so blades stubbify slightly toward the rear. We build one
-  // geometry per stage index (4 distinct), reused by that stage's rotor and
-  // its interleaved stator.
+  // 4 rotor rows packed into the aft LPC span (see BOOSTER_ROTOR_FRONT). The tip
+  // radius TAPERS 0.61 -> 0.54 front-to-rear so the blades ride ~0.03 m inside
+  // the tapering core casing (coreLpcOuter 0.67 -> 0.56) instead of poking
+  // through it — and so the core annulus visibly narrows as the air compresses.
+  // compactness also ramps 0.0 -> 0.4 to stubbify the airfoils. One geometry per
+  // stage index, reused by that stage's rotor and its interleaved stator.
   const boosterStages = useSimStore.getState().config.boosterStages; // 4
   const boosterGeos = useMemo(() => {
     const geos: THREE.BufferGeometry[] = [];
@@ -74,8 +86,8 @@ export function Compressor() {
       const t = boosterStages > 1 ? i / (boosterStages - 1) : 0;
       geos.push(
         createCompressorBladeGeometry({
-          hubRadius: 0.4,
-          tipRadius: 0.6,
+          hubRadius: 0.42,
+          tipRadius: lerp(0.61, 0.54, t),
           compactness: lerp(0.0, 0.4, t),
         }),
       );
@@ -119,8 +131,8 @@ export function Compressor() {
   // Even axial spacing helpers for the rotor rows of each section.
   const boosterX = (i: number) =>
     boosterStages > 1
-      ? lerp(AXIS.lpcStart, AXIS.lpcEnd, i / (boosterStages - 1))
-      : (AXIS.lpcStart + AXIS.lpcEnd) / 2;
+      ? lerp(BOOSTER_ROTOR_FRONT, AXIS.lpcEnd, i / (boosterStages - 1))
+      : (BOOSTER_ROTOR_FRONT + AXIS.lpcEnd) / 2;
   const hpcX = (i: number) =>
     hpcStages > 1
       ? lerp(AXIS.hpcStart, AXIS.hpcEnd, i / (hpcStages - 1))

@@ -63,11 +63,14 @@ export function Fan() {
   // discrete blades.
   const blurDiscGeo = useMemo(() => createRing(RADII.fanHub * 1.05, RADII.fanTip * 0.99, { segments: 96 }), []);
 
-  // Small outlet guide vanes filling fan-hub -> nacelle-inner span.
+  // Outlet guide vanes spanning ONLY the bypass annulus. The root sits just
+  // outside the core casing (coreLpcOuter ≈ 0.62 m) so the vanes never reach
+  // down into the core/booster drum; the tip stops just inside the bypass-duct
+  // outer wall (nacelle inner).
   const ogvGeo = useMemo(
     () =>
       createCompressorBladeGeometry({
-        hubRadius: RADII.fanHub,
+        hubRadius: RADII.coreLpcOuter + 0.04,
         tipRadius: RADII.nacelleInner * 0.95,
         compactness: 0.2,
       }),
@@ -157,12 +160,16 @@ export function Fan() {
         />
       </mesh>
 
-      {/* Stationary outlet guide vanes just behind the fan. */}
+      {/* Stationary outlet guide vanes: the FIRST stator after the fan. Placed
+          just aft of the fan's swept tip TE (~x=-2.50 at the duct radius) and
+          FORWARD of the first booster rotor (the booster rows are packed aft to
+          leave room — see Compressor.tsx). Sits in the bypass annulus, below
+          the fan tips. */}
       <BladeRow
         geometry={ogvGeo}
         material={ogvMat}
         count={OGV_COUNT}
-        x={AXIS.fanPlane + 0.55}
+        x={AXIS.fanPlane + 0.82}
         spin={null}
       />
     </group>
