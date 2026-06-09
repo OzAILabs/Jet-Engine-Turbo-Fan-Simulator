@@ -24,15 +24,14 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useSimStore } from '../store/useSimStore';
 import { AXIS, RADII } from '../data/engineLayout';
-import { createCone, createTube, createRing } from '../geometry/annularSection';
+import { createTube, createRing } from '../geometry/annularSection';
 import { createFanBladeGeometry } from '../geometry/bladeGeometry';
 import { createCompressorBladeGeometry } from '../geometry/compressorBladeGeometry';
 import { BladeRow } from './BladeRow';
+import { Spinner } from './Spinner';
 
 /** Number of outlet guide vanes behind the fan (stationary stator row). */
 const OGV_COUNT = 44;
-/** Axial length of the spinner nose cone [m]. */
-const SPINNER_LENGTH = 0.6;
 
 export function Fan() {
   const config = useSimStore((s) => s.config);
@@ -43,9 +42,6 @@ export function Fan() {
   const blurMatRef = useRef<THREE.MeshStandardMaterial>(null!);
 
   // --- Geometry (built once, reused) --------------------------------------
-  // Spinner nose cone: createCone makes its tip point -X automatically.
-  const spinnerGeo = useMemo(() => createCone(RADII.fanHub, SPINNER_LENGTH), []);
-
   // Short fan hub drum the blades root into (slight aft taper for looks).
   const hubGeo = useMemo(
     () => createTube(RADII.fanHub, RADII.fanHub * 0.95, AXIS.fanBladeWidth),
@@ -127,12 +123,8 @@ export function Fan() {
     <group>
       {/* Spinner nose cone + fan hub: these turn with the LP spool. */}
       <group ref={spoolGroup}>
-        {/* Cone tip points -X; center it ahead of the fan plane. */}
-        <mesh
-          geometry={spinnerGeo}
-          material={hubMat}
-          position={[AXIS.fanPlane - SPINNER_LENGTH / 2, 0, 0]}
-        />
+        {/* Ogive nose cone + white safety spiral (spins with the LP spool). */}
+        <Spinner />
         {/* Hub drum centered on the fan plane. */}
         <mesh geometry={hubGeo} material={hubMat} position={[AXIS.fanPlane, 0, 0]} />
       </group>
