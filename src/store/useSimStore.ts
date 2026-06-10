@@ -22,6 +22,8 @@ import {
   createOffSequence,
   createRunningSequence,
   isSequenceActive,
+  BLEED_MIN_PSI,
+  STARTER_REENGAGE_MAX_N2,
   type StartControls,
   type StartSequenceState,
 } from '../sim/startSequence';
@@ -102,6 +104,8 @@ export interface SimStore {
   startSelector: StartSelectorPos;
   fuelControl: FuelControlPos;
   autostart: boolean;
+  /** One-touch autostart macro in progress (orchestrated inside tick). */
+  autoStartActive: boolean;
   apuRunning: boolean;
   apuBleedPsi: number;
   /** Training scenario: igniters spark but nothing lights (forces an autostart abort/retry). */
@@ -137,6 +141,8 @@ export interface SimStore {
   setStartSelector: (p: StartSelectorPos) => void;
   setFuelControl: (p: FuelControlPos) => void;
   setAutostart: (on: boolean) => void;
+  /** Kick off the one-touch autostart procedure (APU → bleed → crank → idle). */
+  runAutostart: () => void;
   setApuRunning: (on: boolean) => void;
   setIgniterFailure: (on: boolean) => void;
 
@@ -212,13 +218,14 @@ export const useSimStore = create<SimStore>((set, get) => ({
   startSelector: 'NORM',
   fuelControl: 'CUTOFF',
   autostart: true,
+  autoStartActive: false,
   apuRunning: false,
   apuBleedPsi: 0,
   igniterFailure: false,
   instruments: buildInstruments(config, initialSpool, initialEngine, initialSeq),
 
   viewMode: 'cutaway',
-  exhaustStyle: 'volumetric',
+  exhaustStyle: 'shader', // 'Dramatic' bright plume by default
   cameraMode: 'orthographic',
   cameraCommand: { kind: 'reset', preset: 'iso', focusPoint: null, nonce: 0 },
   paused: false,
@@ -228,7 +235,9 @@ export const useSimStore = create<SimStore>((set, get) => ({
   showFlowParticles: true,
   showTempColors: true,
   showVelocityVectors: false,
-  soundEnabled: false,
+  // Sound defaults ON; the actual AudioContext can only start after the first
+  // user gesture (browser autoplay policy), which EngineAudio arms on mount.
+  soundEnabled: true,
   soundVolume: 0.55,
 
   selectedStation: null,
@@ -250,6 +259,13 @@ export const useSimStore = create<SimStore>((set, get) => ({
   setStartSelector: (p) => set({ startSelector: p }),
   setFuelControl: (p) => set({ fuelControl: p }),
   setAutostart: (on) => set({ autostart: on }),
+  // One-touch start: arm the EEC + spin up the APU, then let the tick
+  // orchestration command START/RUN once bleed pressure is up and carry the
+  // engine all the way to idle. No-op if it's already running.
+  runAutostart: () => {
+    if (get().startSeq.runState === 'running') return;
+    set({ autoStartActive: true, autostart: true, apuRunning: true });
+  },
   setApuRunning: (on) => set({ apuRunning: on }),
   setIgniterFailure: (on) => set({ igniterFailure: on }),
 
@@ -297,15 +313,39 @@ export const useSimStore = create<SimStore>((set, get) => ({
         transientActive: penalty > 4,
         apuBleedPsi,
         startSeq: syncedSeq,
+        autoStartActive: false, // reached idle/running — macro is done
         instruments: buildInstruments(cfg, nextSpool, nextEngine, syncedSeq),
       });
       return;
     }
 
+    // --- One-touch autostart orchestration --------------------------------
+    // runAutostart() turned on the APU + armed the EEC; here we WAIT for bleed
+    // pressure to build, then command START + RUN. Selecting START dry (bleed
+    // < 25 psi) would trip a noBleed abort and spring the selector back, which
+    // is exactly why a true one-click start has to be sequenced, not mashed.
+    // Once cranking, the EEC owns the rest; we just clear the flag at idle
+    // (success) or when it falls back to off after exhausting its retries.
+    let cmdSelector = state.startSelector;
+    let cmdFuel = state.fuelControl;
+    let autoStartActive = state.autoStartActive;
+    if (autoStartActive) {
+      const stalled = seq.runState === 'off' || seq.runState === 'spooldown';
+      if (
+        stalled &&
+        cmdSelector !== 'START' &&
+        apuBleedPsi >= BLEED_MIN_PSI &&
+        state.spool.n2 <= STARTER_REENGAGE_MAX_N2
+      ) {
+        cmdSelector = 'START';
+        cmdFuel = 'RUN';
+      }
+    }
+
     // --- Sub-idle regime: the start/shutdown sequence owns the spools. ---
     const controls: StartControls = {
-      startSelector: state.startSelector,
-      fuelControl: state.fuelControl,
+      startSelector: cmdSelector,
+      fuelControl: cmdFuel,
       autostart: state.autostart,
       bleedPsi: apuBleedPsi,
       igniterFailure: state.igniterFailure,
@@ -321,7 +361,13 @@ export const useSimStore = create<SimStore>((set, get) => ({
     const nextEngine = computeEngineState(state.inputs, cfg, nextSpool);
     // The EEC releases the latched START selector at starter cutout.
     const startSelector =
-      nextSeq.selectorRelease && state.startSelector === 'START' ? 'NORM' : state.startSelector;
+      nextSeq.selectorRelease && cmdSelector === 'START' ? 'NORM' : cmdSelector;
+
+    if (autoStartActive) {
+      if (nextSeq.runState === 'running') autoStartActive = false; // idle handoff
+      else if (nextSeq.fault && nextSeq.runState === 'off') autoStartActive = false; // gave up
+    }
+
     set({
       spool: nextSpool,
       engine: nextEngine,
@@ -330,6 +376,8 @@ export const useSimStore = create<SimStore>((set, get) => ({
       apuBleedPsi,
       startSeq: nextSeq,
       startSelector,
+      fuelControl: cmdFuel,
+      autoStartActive,
       instruments: buildInstruments(cfg, nextSpool, nextEngine, nextSeq),
     });
   },
@@ -419,6 +467,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
       startSelector: 'NORM',
       apuRunning: false,
       apuBleedPsi: 0,
+      autoStartActive: false,
       instruments: buildInstruments(get().config, spool, engine, startSeq),
     });
   },

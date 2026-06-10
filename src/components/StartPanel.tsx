@@ -16,6 +16,17 @@ import { useState } from 'react';
 import { useSimStore } from '../store/useSimStore';
 import type { EngineRunState } from '../sim/startSequence';
 
+// Short phase labels for the one-touch AUTO-START button while it runs.
+const AUTOSTART_PHASE: Partial<Record<EngineRunState, string>> = {
+  off: 'APU SPOOL-UP',
+  spooldown: 'CLEARING',
+  motoring: 'DRY MOTORING',
+  fuelOn: 'FUEL ON',
+  lightoff: 'LIGHT-OFF',
+  accel: 'ACCEL TO IDLE',
+  aborting: 'ABORT — MOTORING',
+};
+
 // ---------------------------------------------------------------------------
 // EICAS-style round dial (SVG): 240° sweep, white needle + digits, red limit
 // radial, optional amber band and start-limit radial.
@@ -112,6 +123,7 @@ export function StartPanel() {
   const startSelector = useSimStore((s) => s.startSelector);
   const fuelControl = useSimStore((s) => s.fuelControl);
   const autostart = useSimStore((s) => s.autostart);
+  const autoStartActive = useSimStore((s) => s.autoStartActive);
   const apuRunning = useSimStore((s) => s.apuRunning);
   const apuBleedPsi = useSimStore((s) => s.apuBleedPsi);
   const igniterFailure = useSimStore((s) => s.igniterFailure);
@@ -121,6 +133,7 @@ export function StartPanel() {
   const setStartSelector = useSimStore((s) => s.setStartSelector);
   const setFuelControl = useSimStore((s) => s.setFuelControl);
   const setAutostart = useSimStore((s) => s.setAutostart);
+  const runAutostart = useSimStore((s) => s.runAutostart);
   const setApuRunning = useSimStore((s) => s.setApuRunning);
   const setIgniterFailure = useSimStore((s) => s.setIgniterFailure);
   const resetToColdDark = useSimStore((s) => s.resetToColdDark);
@@ -140,6 +153,40 @@ export function StartPanel() {
       </button>
 
       <div className="start-panel">
+        {/* ----- One-touch full autostart procedure ------------------------ */}
+        <div className="sp-autostart-bar">
+          {running ? (
+            <button className="sp-autostart is-done" disabled>
+              ● ENGINE RUNNING — IDLE
+            </button>
+          ) : autoStartActive ? (
+            <button
+              className="sp-autostart is-running"
+              onClick={() => resetToColdDark()}
+              title="Abort the autostart and return to cold & dark"
+            >
+              ■ ABORT · {AUTOSTART_PHASE[startSeq.runState] ?? 'STARTING'}
+              {instruments.n2Pct > 1 ? ` · N2 ${instruments.n2Pct.toFixed(0)}%` : ''}
+            </button>
+          ) : (
+            <button
+              className="sp-autostart"
+              onClick={() => runAutostart()}
+              title="One click: APU bleed → crank → fuel/ignition → idle, fully sequenced by the EEC"
+            >
+              ▶ AUTO-START ENGINE
+            </button>
+          )}
+          <span className="sp-autostart-hint">
+            {autoStartActive
+              ? 'EEC sequencing the start…'
+              : running
+                ? 'Throttle up, or cut fuel to shut down.'
+                : 'Full hands-off start to ground idle.'}
+          </span>
+        </div>
+
+        <div className="sp-row">
         {/* ----- Column 1: bleed + EEC mode --------------------------------- */}
         <div className="sp-col sp-overhead">
           <div className="sp-section-title">AIR / EEC</div>
@@ -280,6 +327,7 @@ export function StartPanel() {
               {startSeq.fault.message}
             </div>
           )}
+        </div>
         </div>
       </div>
     </div>

@@ -8,6 +8,28 @@ import { clamp } from '../sim/units';
  * Rendering stays outside React through requestAnimationFrame.
  */
 export function EngineAudio() {
+  // Sound defaults ON, but a browser AudioContext can only start inside a user
+  // gesture. Arm the audio graph on the first interaction anywhere, honouring
+  // whatever soundEnabled is at that moment (so a pre-gesture Mute still wins).
+  useEffect(() => {
+    let armed = false;
+    const arm = () => {
+      if (armed) return;
+      armed = true;
+      void engineAudio.setEnabled(useSimStore.getState().soundEnabled);
+      remove();
+    };
+    const remove = () => {
+      window.removeEventListener('pointerdown', arm, true);
+      window.removeEventListener('keydown', arm, true);
+      window.removeEventListener('touchstart', arm, true);
+    };
+    window.addEventListener('pointerdown', arm, true);
+    window.addEventListener('keydown', arm, true);
+    window.addEventListener('touchstart', arm, true);
+    return remove;
+  }, []);
+
   useEffect(() => {
     let frameId = 0;
 
