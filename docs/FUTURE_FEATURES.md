@@ -6,6 +6,29 @@ completed, substantially changed, or intentionally deferred.
 
 ## Completed
 
+- [x] **Real engine startup procedure** (777/GE90-faithful): flip-out ENGINE
+  START panel with APU bleed, START/IGNITION selector (EEC-released), guarded
+  fuel control, EICAS dials with the disappearing 750 °C start-limit line;
+  cold-and-dark boot; autostart protections (hot/hung/no-light, retry with
+  both igniters); manual-start hot starts emerge from the physics.
+- [x] **Sub-idle torque-balance physics**: starter torque × bleed pressure,
+  n²+Coulomb drag, light-off + sub-idle combustion efficiency, EGT peak
+  ~600 °C, starter cutout 63% N2, idle 66% N2 in ~70 s; shutdown coastdown
+  (~60–90 s core stop, minutes-long fan windmill); in-flight windmilling.
+- [x] **Certified-data calibration** (EASA TCDS / ICAO EDB): N1/N2 as % of
+  rated speed (2,355 / 9,332 rpm), BPR corrected to 7.1 (derived, not
+  prescribed), OPR 42, 513.9 kN, FF 4.6–4.7 kg/s takeoff / ~0.24 idle,
+  EGT displayed as T49 with certified limits, realistic surge margins.
+- [x] **External hardware detail**: accessory gearbox train, fuel manifolds +
+  30 pigtails, igniters + exciters + leads, VSV rings/actuators (animated),
+  10 VBV doors (open during start), bolted flanges + 280 bolts, borescope
+  ports, FADEC + harnesses, EGT thermocouple ring, oil tank, drain mast —
+  all instanced, MIL-STD-1247 tube colors.
+- [x] Rotating rotor drums/disk rims on the correct spools + bearing frames.
+- [x] Exhaust state-gating (no plume engine-off, light-off smoke puff),
+  daylight-honest Realistic style, shock cells in Dramatic when choked.
+- [x] Deterministic capture bridge (`window.__sim`): named scenarios, instant
+  camera presets/poses, PNG capture (see .claude/CAPTURE.md).
 - [x] Rework Dramatic exhaust into a turbulent, translucent commercial-jet plume.
 - [x] Remove fighter-style flame colors, shock diamonds, and additive blowout.
 - [x] Add screen-space heat distortion to Dramatic exhaust.
@@ -63,12 +86,10 @@ completed, substantially changed, or intentionally deferred.
 - [ ] Add variable stator and bleed effects.
 - [ ] Improve nozzle modeling with pressure thrust, discharge coefficients,
   installation losses, and more detailed choking behavior.
-- [ ] Add operating sequences and abnormal scenarios:
-  - Starter-driven engine start and starter cutout.
-  - Fuel introduction, light-off, and EGT rise.
-  - Shutdown and spool coast-down.
-  - Windmilling.
-  - Hot start, hung start, flameout, compressor stall, and surge.
+- [x] Operating sequences and abnormal scenarios — DONE except compressor
+  stall/surge events (start, light-off, EGT rise, shutdown, windmilling,
+  hot/hung/no-light starts all implemented).
+- [ ] Compressor stall / surge as audible+visible events (bang, flame burp).
 
 ## Maintenance Rule
 

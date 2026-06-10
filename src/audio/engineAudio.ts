@@ -13,6 +13,8 @@
  * synchronized with the model.
  */
 
+import type { EngineRunState } from '../sim/startSequence';
+
 export interface EngineAudioFrame {
   n1: number;
   n2: number;
@@ -23,10 +25,33 @@ export interface EngineAudioFrame {
   coreVelocityFraction: number;
   bypassVelocityFraction: number;
   fuelFraction: number;
+  /** Start/shutdown sequence state — drives the sub-idle soundscape. */
+  runState: EngineRunState;
+  starterEngaged: boolean;
+  ignitionOn: boolean;
+  lit: boolean;
+  /** Displayed EGT [°C] (start peak ~550–630, idle ~440). */
+  egtC: number;
+  /** Displayed fuel flow [kg/s] (light-off ~0.14, idle ~0.25). */
+  fuelFlowKgs: number;
 }
 
 interface ToneLayer {
   oscillator: OscillatorNode;
+  gain: GainNode;
+}
+
+interface FilteredToneLayer {
+  oscillator: OscillatorNode;
+  filter: BiquadFilterNode;
+  gain: GainNode;
+}
+
+/** Two detuned oscillators sharing a narrow bandpass — a slow-beating drone. */
+interface DualToneLayer {
+  oscA: OscillatorNode;
+  oscB: OscillatorNode;
+  filter: BiquadFilterNode;
   gain: GainNode;
 }
 
@@ -37,6 +62,12 @@ interface NoiseLayer {
 }
 
 const PARAM_SMOOTHING_SECONDS = 0.08;
+
+/** Air-turbine starter audio: crank range over which the whine sweeps. */
+const STARTER_CRANK_N2 = 0.65;
+/** Igniter spark repetition (~6 Hz) and the look-ahead scheduling horizon. */
+const IGNITER_INTERVAL_S = 1 / 6;
+const IGNITER_LOOKAHEAD_S = 0.2;
 
 /**
  * Revert switch for the experimental low-frequency jet roar layer.
@@ -69,6 +100,64 @@ function smoothstep(edge0: number, edge1: number, value: number): number {
   return t * t * (3 - 2 * t);
 }
 
+/**
+ * Igniter spark click: a ~3 ms noise burst with the attack/decay envelope baked
+ * into the buffer, so playback needs no AudioParam automation at all.
+ */
+function createIgniterClickBuffer(context: AudioContext): AudioBuffer {
+  const length = Math.max(16, Math.ceil(context.sampleRate * 0.006));
+  const buffer = context.createBuffer(1, length, context.sampleRate);
+  const data = buffer.getChannelData(0);
+  const attack = Math.max(1, Math.floor(length * 0.12));
+  for (let i = 0; i < length; i++) {
+    const envelope = i < attack ? i / attack : Math.exp(-(i - attack) / (length * 0.2));
+    data[i] = (Math.random() * 2 - 1) * envelope;
+  }
+  return buffer;
+}
+
+/**
+ * Light-off "whoomph": pre-rendered low-frequency noise swell (~60–200 Hz,
+ * fast attack then ~0.8 s decay), normalized so the bus gain sets the level.
+ */
+function createWhoomphBuffer(context: AudioContext): AudioBuffer {
+  const sampleRate = context.sampleRate;
+  const length = Math.ceil(sampleRate * 1.1);
+  const buffer = context.createBuffer(1, length, sampleRate);
+  const data = buffer.getChannelData(0);
+
+  // Two cascaded one-pole lowpasses (~200 Hz) minus a one-pole lowpass
+  // (~55 Hz) confine white noise to roughly the 60–200 Hz band.
+  const lpCoeff = Math.exp((-2 * Math.PI * 200) / sampleRate);
+  const hpCoeff = Math.exp((-2 * Math.PI * 55) / sampleRate);
+  let lp1 = 0;
+  let lp2 = 0;
+  let low = 0;
+  const attackSeconds = 0.14;
+  const decaySeconds = 0.32;
+  let peak = 0;
+  for (let i = 0; i < length; i++) {
+    const t = i / sampleRate;
+    const white = Math.random() * 2 - 1;
+    lp1 = lp1 * lpCoeff + white * (1 - lpCoeff);
+    lp2 = lp2 * lpCoeff + lp1 * (1 - lpCoeff);
+    low = low * hpCoeff + lp2 * (1 - hpCoeff);
+    const banded = lp2 - low;
+    const envelope =
+      t < attackSeconds
+        ? (t / attackSeconds) * (t / attackSeconds)
+        : Math.exp(-(t - attackSeconds) / decaySeconds);
+    const sample = banded * envelope;
+    data[i] = sample;
+    peak = Math.max(peak, Math.abs(sample));
+  }
+  if (peak > 0) {
+    const norm = 1 / peak;
+    for (let i = 0; i < length; i++) data[i] *= norm;
+  }
+  return buffer;
+}
+
 function createSoftClipCurve(size = 1024): Float32Array<ArrayBuffer> {
   const curve = new Float32Array(size);
   for (let i = 0; i < size; i++) {
@@ -92,6 +181,27 @@ class ProceduralEngineAudio {
   private intake: NoiseLayer | null = null;
   private exhaust: NoiseLayer | null = null;
   private hiss: NoiseLayer | null = null;
+
+  // --- Start-sequence layers -----------------------------------------------
+  /** Air-turbine starter: clean whine + gritty detuned partner + air rush. */
+  private starterSine: ToneLayer | null = null;
+  private starterSaw: FilteredToneLayer | null = null;
+  private starterAir: NoiseLayer | null = null;
+  /** GE90 sub-idle VBV "whine-grind" drone (10 open variable bleed valves). */
+  private vbvDrone: DualToneLayer | null = null;
+  /** Combustion rumble — fuel/EGT-driven so the burn is audible sub-idle. */
+  private combustion: NoiseLayer | null = null;
+  /** One-shot buses: their gains are FIXED — update() never automates them, so
+   * scheduled AudioBufferSourceNodes are never clobbered by setSmooth(). */
+  private igniterInput: BiquadFilterNode | null = null;
+  private igniterBuffer: AudioBuffer | null = null;
+  private whoomphInput: BiquadFilterNode | null = null;
+  private whoomphBuffer: AudioBuffer | null = null;
+
+  // Per-frame memory for edge detection and look-ahead scheduling.
+  private prevLit = false;
+  private nextIgniterTime = 0;
+
   private enabled = false;
   private volume = 0.55;
 
@@ -115,6 +225,7 @@ class ProceduralEngineAudio {
     const context = this.context;
     if (!context || !this.enabled || !this.fanTone || !this.fanHarmonic || !this.hpTone || !this.subRoar) return;
     if (!this.rumble || !this.lowRoar || !this.roarBody || !this.roarTear || !this.intake || !this.exhaust || !this.hiss) return;
+    if (!this.starterSine || !this.starterSaw || !this.starterAir || !this.vbvDrone || !this.combustion) return;
 
     const now = context.currentTime;
     const n1 = Math.max(0, Math.min(1.1, frame.n1));
@@ -127,20 +238,24 @@ class ProceduralEngineAudio {
 
     // Actual blade-pass frequencies are used where practical. The HP tone is
     // folded into an audible range while retaining its nonlinear spool sweep.
-    const fanBladePassHz = Math.max(28, (frame.lpRpm / 60) * 22);
-    const hpBladePassHz = Math.max(70, (frame.hpRpm / 60) * 46);
-    const hpAudibleHz = 340 + Math.pow(n2, 1.7) * 3450 + (hpBladePassHz % 240) * 0.12;
+    // No frequency floors: everything sweeps to 0 Hz as the spools stop. The
+    // smoothstep "presence" gates re-create the old fixed offsets at/above
+    // idle (so the running mix is untouched) but reach TRUE zero when parked.
+    const fanPresence = smoothstep(0.03, 0.1, n1);
+    const fanBladePassHz = (frame.lpRpm / 60) * 22;
+    const hpBladePassHz = (frame.hpRpm / 60) * 46;
+    const hpAudibleHz = 340 * smoothstep(0, 0.06, n2) + Math.pow(n2, 1.7) * 3450 + (hpBladePassHz % 240) * 0.12;
 
     setSmooth(this.fanTone.oscillator.frequency, fanBladePassHz, now, 0.055);
     setSmooth(this.fanHarmonic.oscillator.frequency, fanBladePassHz * 2.02, now, 0.055);
     setSmooth(this.hpTone.oscillator.frequency, hpAudibleHz, now, 0.045);
 
-    setSmooth(this.fanTone.gain.gain, 0.015 + Math.pow(n1, 1.25) * 0.075, now);
-    setSmooth(this.fanHarmonic.gain.gain, Math.pow(n1, 1.8) * 0.025, now);
+    setSmooth(this.fanTone.gain.gain, fanPresence * (0.015 + Math.pow(n1, 1.25) * 0.075), now);
+    setSmooth(this.fanHarmonic.gain.gain, fanPresence * Math.pow(n1, 1.8) * 0.025, now);
     setSmooth(this.hpTone.gain.gain, Math.pow(n2, 1.9) * 0.035, now);
 
     setSmooth(this.rumble.filter.frequency, 75 + n1 * 150, now);
-    setSmooth(this.rumble.gain.gain, 0.025 + n1 * 0.055 + fuel * 0.018, now);
+    setSmooth(this.rumble.gain.gain, fanPresence * (0.025 + n1 * 0.055) + fuel * 0.018, now);
 
     // Separate staged jet-roar system. The slow, non-matching modulation rates
     // keep it rolling and uneven rather than sounding like a loop or bass note.
@@ -181,6 +296,76 @@ class ProceduralEngineAudio {
 
     setSmooth(this.hiss.filter.frequency, 1800 + bypassVelocity * 4100, now);
     setSmooth(this.hiss.gain.gain, Math.pow(Math.max(coreVelocity, bypassVelocity), 1.8) * 0.06, now);
+
+    // --- Air-turbine starter -------------------------------------------------
+    // The whine sweeps with N2 across the crank range and is only present while
+    // the start valve is open; at cutout (~63% N2) it fades over about a second.
+    const crank = Math.max(0, Math.min(1, n2 / STARTER_CRANK_N2));
+    const starterHz = 180 + Math.pow(crank, 1.15) * 1220; // ~180 → ~1400 Hz
+    setSmooth(this.starterSine.oscillator.frequency, starterHz, now, 0.06);
+    setSmooth(this.starterSaw.oscillator.frequency, starterHz * 1.007, now, 0.06);
+    setSmooth(this.starterSaw.filter.frequency, Math.max(180, starterHz * 1.9), now, 0.06);
+    const starterLevel = frame.starterEngaged ? 0.3 + 0.7 * crank : 0;
+    const starterFade = frame.starterEngaged ? 0.15 : 0.3; // release tau ⇒ ~1 s fade-out
+    setSmooth(this.starterSine.gain.gain, starterLevel * 0.05, now, starterFade);
+    setSmooth(this.starterSaw.gain.gain, starterLevel * 0.03, now, starterFade);
+    setSmooth(this.starterAir.filter.frequency, 650 + crank * 500, now);
+    setSmooth(this.starterAir.gain.gain, (frame.starterEngaged ? crank : 0) * 0.06, now, starterFade);
+
+    // --- VBV "whine-grind" drone ---------------------------------------------
+    // The GE90's 10 open variable bleed valves give the famous sub-idle groan.
+    // Present between ~10% and idle N2, gone once the VBVs close at idle.
+    const vbvBand = smoothstep(0.1, 0.2, n2) * (1 - smoothstep(0.58, 0.655, n2));
+    const vbvHz = 320 * (0.94 + 0.12 * n2);
+    setSmooth(this.vbvDrone.oscA.frequency, vbvHz, now, 0.09);
+    setSmooth(this.vbvDrone.oscB.frequency, vbvHz * 1.0045, now, 0.09); // ~1.5 Hz beat
+    setSmooth(this.vbvDrone.filter.frequency, vbvHz, now, 0.09);
+    const vbvGrind = 0.85 + 0.15 * Math.sin(now * 2.4); // slow uneven waver
+    setSmooth(this.vbvDrone.gain.gain, vbvBand * vbvGrind * 0.04, now, 0.12);
+
+    // --- Combustion rumble ---------------------------------------------------
+    // Driven by fuel flow and EGT — NOT thrust — so the burn is audible from
+    // light-off all the way to idle, then hands off to the thrust-keyed roar.
+    const fuelNorm = Math.max(0, Math.min(1, frame.fuelFlowKgs / 0.25));
+    const egtNorm = Math.max(0, Math.min(1, frame.egtC / 650));
+    const burning = frame.lit && frame.runState !== 'spooldown';
+    const idleHandoff = 1 - smoothstep(0.22, 0.5, n1); // roar stack takes over above idle
+    const burnDrive = burning ? fuelNorm * (0.35 + 0.65 * egtNorm) : 0;
+    const burnFade = burning ? 0.3 : 0.15; // fuel chop ⇒ ~0.5 s fade
+    setSmooth(this.combustion.filter.frequency, 75 + egtNorm * 95, now);
+    setSmooth(this.combustion.gain.gain, burnDrive * idleHandoff * 0.1, now, burnFade);
+
+    // --- Igniter ticks (look-ahead scheduled one-shots) ------------------------
+    if (frame.ignitionOn) {
+      if (this.nextIgniterTime < now + 0.01) this.nextIgniterTime = now + 0.03;
+      const horizon = now + IGNITER_LOOKAHEAD_S;
+      while (this.nextIgniterTime < horizon) {
+        this.fireOneShot(this.igniterBuffer, this.igniterInput, this.nextIgniterTime);
+        this.nextIgniterTime += IGNITER_INTERVAL_S;
+      }
+    } else {
+      this.nextIgniterTime = 0;
+    }
+
+    // --- Light-off whoomph (false → true edge on the flame flag) ---------------
+    // Gated to the start states so enabling audio mid-flight (or snapping to a
+    // running preset) cannot fire a spurious burst.
+    const inLightoffWindow = frame.runState === 'fuelOn' || frame.runState === 'lightoff';
+    if (frame.lit && !this.prevLit && inLightoffWindow) {
+      this.fireOneShot(this.whoomphBuffer, this.whoomphInput, now);
+    }
+    this.prevLit = frame.lit;
+  }
+
+  /** Play a pre-rendered one-shot through its dedicated (never-automated) bus. */
+  private fireOneShot(buffer: AudioBuffer | null, input: AudioNode | null, when: number) {
+    const context = this.context;
+    if (!context || !buffer || !input) return;
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    source.connect(input);
+    source.onended = () => source.disconnect();
+    source.start(Math.max(when, context.currentTime));
   }
 
   private ensureGraph() {
@@ -226,6 +411,36 @@ class ProceduralEngineAudio {
     this.exhaust = this.createNoise(context, master, noiseBuffer, 'bandpass', 420);
     this.hiss = this.createNoise(context, master, noiseBuffer, 'highpass', 2800);
 
+    // --- Start-sequence layers ---------------------------------------------
+    this.starterSine = this.createTone(context, master, 'sine');
+    this.starterSaw = this.createFilteredTone(context, master, 'sawtooth', 360, 4);
+    this.starterAir = this.createNoise(context, master, noiseBuffer, 'bandpass', 900);
+    this.vbvDrone = this.createVbvDrone(context, master);
+    this.combustion = this.createNoise(context, master, createNoiseBuffer(context, 2.1), 'lowpass', 110);
+
+    // One-shot buses. Their gain values are constants set once here; update()
+    // never calls setSmooth() on them, so cancelScheduledValues can never
+    // strip a scheduled click/whoomph.
+    this.igniterBuffer = createIgniterClickBuffer(context);
+    const igniterFilter = context.createBiquadFilter();
+    igniterFilter.type = 'highpass';
+    igniterFilter.frequency.value = 2600;
+    igniterFilter.Q.value = 0.7;
+    const igniterGain = context.createGain();
+    igniterGain.gain.value = 0.16;
+    igniterFilter.connect(igniterGain).connect(master);
+    this.igniterInput = igniterFilter;
+
+    this.whoomphBuffer = createWhoomphBuffer(context);
+    const whoomphFilter = context.createBiquadFilter();
+    whoomphFilter.type = 'lowpass';
+    whoomphFilter.frequency.value = 220;
+    whoomphFilter.Q.value = 0.6;
+    const whoomphGain = context.createGain();
+    whoomphGain.gain.value = 0.22;
+    whoomphFilter.connect(whoomphGain).connect(master);
+    this.whoomphInput = whoomphFilter;
+
     this.applyMaster();
   }
 
@@ -237,6 +452,50 @@ class ProceduralEngineAudio {
     oscillator.connect(gain).connect(destination);
     oscillator.start();
     return { oscillator, gain };
+  }
+
+  /** A single oscillator routed through a tracking bandpass (starter "grind"). */
+  private createFilteredTone(
+    context: AudioContext,
+    destination: AudioNode,
+    type: OscillatorType,
+    frequency: number,
+    q: number,
+  ): FilteredToneLayer {
+    const oscillator = context.createOscillator();
+    const filter = context.createBiquadFilter();
+    const gain = context.createGain();
+    oscillator.type = type;
+    oscillator.frequency.value = frequency;
+    filter.type = 'bandpass';
+    filter.frequency.value = frequency;
+    filter.Q.value = q;
+    gain.gain.value = 0;
+    oscillator.connect(filter).connect(gain).connect(destination);
+    oscillator.start();
+    return { oscillator, filter, gain };
+  }
+
+  /** Two slightly detuned sawtooths through one narrow bandpass — VBV drone. */
+  private createVbvDrone(context: AudioContext, destination: AudioNode): DualToneLayer {
+    const oscA = context.createOscillator();
+    const oscB = context.createOscillator();
+    const filter = context.createBiquadFilter();
+    const gain = context.createGain();
+    oscA.type = 'sawtooth';
+    oscB.type = 'sawtooth';
+    oscA.frequency.value = 320;
+    oscB.frequency.value = 321.5;
+    filter.type = 'bandpass';
+    filter.frequency.value = 320;
+    filter.Q.value = 5;
+    gain.gain.value = 0;
+    oscA.connect(filter);
+    oscB.connect(filter);
+    filter.connect(gain).connect(destination);
+    oscA.start();
+    oscB.start();
+    return { oscA, oscB, filter, gain };
   }
 
   private createNoise(

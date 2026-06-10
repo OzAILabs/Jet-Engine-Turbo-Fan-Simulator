@@ -278,7 +278,11 @@ const FRAG = /* glsl */ `
     float shock = uChoked * vCore * cell * cell * exp(-vT * 3.0);
     col *= 1.0 + shock * 0.6;
 
-    float alpha = mask * vBright * uOpacity * (0.52 + 0.3 * shock);
+    // Dissolve the tail: turbulent mixing dilutes the jet into clean air, so
+    // the far plume must vanish rather than linger as a gray smear (real
+    // high-bypass engines do not leave a visible smoke trail).
+    float dissolve = 1.0 - 0.97 * smoothstep(0.28, 0.85, vT);
+    float alpha = mask * vBright * uOpacity * (0.52 + 0.3 * shock) * dissolve;
     gl_FragColor = vec4(col, alpha);
     if (gl_FragColor.a < 0.003) discard;
   }
