@@ -75,14 +75,16 @@ function ClockInstances({
   const ref = useRef<THREE.InstancedMesh>(null!);
 
   useLayoutEffect(() => {
+    const mesh = ref.current;
+    if (!mesh) return; // unmounted (exploded view) — the parent rendered null
     hours.forEach((hour, k) => {
       const phi = (hour / 12) * Math.PI * 2;
       dummy.position.set(0, 0, 0);
       dummy.rotation.set(-phi, 0, 0); // maps +Y → ALF clock position
       dummy.updateMatrix();
-      ref.current.setMatrixAt(k, dummy.matrix);
+      mesh.setMatrixAt(k, dummy.matrix);
     });
-    ref.current.instanceMatrix.needsUpdate = true;
+    mesh.instanceMatrix.needsUpdate = true;
   }, [hours]);
 
   return (

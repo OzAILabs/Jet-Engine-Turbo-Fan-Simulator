@@ -136,6 +136,7 @@ export function CaseDetail() {
   // the hex silhouettes read against the case.
   useLayoutEffect(() => {
     const mesh = boltsRef.current;
+    if (!mesh) return; // unmounted (exploded view) — refs are null
     let i = 0;
     dummy.scale.set(1, 1, 1);
     for (const { x, boltCount } of EXTERNALS.flanges) {
@@ -158,6 +159,7 @@ export function CaseDetail() {
   useLayoutEffect(() => {
     const bosses = bossesRef.current;
     const plugs = plugsRef.current;
+    if (!bosses || !plugs) return; // unmounted (exploded view)
     let i = 0;
     dummy.scale.set(1, 1, 1);
     for (const { x, clock } of EXTERNALS.borescopePorts) {
@@ -190,6 +192,7 @@ export function CaseDetail() {
   // of the coreCaseRadiusAt profile, so a pitched straight box lies flush).
   useLayoutEffect(() => {
     const mesh = ribsRef.current;
+    if (!mesh) return; // unmounted (exploded view)
     const fx = EXTERNALS.flanges.map((f) => f.x);
     const bays = [
       { x0: fx[0] + RIB_MARGIN, x1: fx[1] - RIB_MARGIN }, // fan frame / LPC case

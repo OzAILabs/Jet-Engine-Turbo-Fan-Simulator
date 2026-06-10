@@ -103,6 +103,7 @@ function DiskRims({
 
   useLayoutEffect(() => {
     const mesh = meshRef.current;
+    if (!mesh) return;
     for (let i = 0; i < xs.length; i++) {
       dummy.position.set(xs[i], 0, 0);
       dummy.rotation.set(0, 0, 0);
