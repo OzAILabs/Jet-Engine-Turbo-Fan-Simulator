@@ -2,13 +2,29 @@
  * Central application state (Zustand).
  *
  * Holds: the user inputs, the recomputed steady-state engine solution, the
- * live (animated) spool state, and all view/UI toggles. Components subscribe to
- * just the slices they need, so a slider re-render never forces the 3D scene to
- * rebuild.
+ * live (animated) spool state, the engine start/shutdown sequence, and all
+ * view/UI toggles. Components subscribe to just the slices they need, so a
+ * slider re-render never forces the 3D scene to rebuild.
+ *
+ * The engine boots COLD AND DARK. Two regimes share the tick:
+ *  • Sub-idle (off/start/shutdown): startSequence.ts integrates the spools
+ *    from a starter/combustion/drag torque balance and owns the displayed
+ *    fuel flow + EGT (the EEC schedule).
+ *  • Running (at/above idle): the classic first-order spool lags chase the
+ *    throttle-commanded targets (spoolDynamics.ts).
  */
 import { create } from 'zustand';
 import { computeEngineState, equilibriumDynamics } from '../sim/engineModel';
 import { advanceSpools, transientSurgePenalty } from '../sim/spoolDynamics';
+import {
+  advanceStartSequence,
+  beginShutdown,
+  createOffSequence,
+  createRunningSequence,
+  isSequenceActive,
+  type StartControls,
+  type StartSequenceState,
+} from '../sim/startSequence';
 import { defaultEngineConfig } from '../data/defaultEngineConfig';
 import type { EngineConfig, EngineInputs, EngineState, SpoolState, StationId } from '../sim/types';
 import { clamp } from '../sim/units';
@@ -20,6 +36,9 @@ export type CameraMode = 'orthographic' | 'perspective';
 export type ExhaustStyle = 'volumetric' | 'shader';
 export type CameraPreset = 'iso' | 'fan' | 'compressor' | 'combustor' | 'exhaust' | 'top';
 
+export type StartSelectorPos = 'NORM' | 'START' | 'CON';
+export type FuelControlPos = 'RUN' | 'CUTOFF';
+
 export interface CameraCommand {
   /** What kind of camera move was last requested. */
   kind: 'preset' | 'focus' | 'reset';
@@ -30,10 +49,21 @@ export interface CameraCommand {
   nonce: number;
 }
 
+/** The values the cockpit gauges show, valid in BOTH regimes (start + running). */
+export interface Instruments {
+  n1Pct: number;
+  n2Pct: number;
+  n1Rpm: number;
+  n2Rpm: number;
+  egtC: number;
+  fuelFlowKgs: number;
+  oilPressurePsi: number;
+}
+
 const config: EngineConfig = defaultEngineConfig;
 
 const INITIAL_INPUTS: EngineInputs = {
-  throttle: 85,
+  throttle: 0,
   altitudeFt: 0,
   mach: 0,
   isaTempOffsetC: 0,
@@ -41,6 +71,9 @@ const INITIAL_INPUTS: EngineInputs = {
 
 const TAKEOFF_INPUTS: EngineInputs = { throttle: 100, altitudeFt: 0, mach: 0, isaTempOffsetC: 0 };
 const CRUISE_INPUTS: EngineInputs = { throttle: 85, altitudeFt: 35000, mach: 0.85, isaTempOffsetC: 0 };
+
+/** APU bleed pressure when running [psi] (starter needs ≥ 25). */
+const APU_BLEED_PSI = 38;
 
 export interface SimStore {
   config: EngineConfig;
@@ -52,6 +85,15 @@ export interface SimStore {
   /** Live surge margin (steady margin minus any throttle-transient penalty). */
   surgeMargin: number;
   transientActive: boolean;
+
+  // Start sequence / engine controls (777-style)
+  startSeq: StartSequenceState;
+  startSelector: StartSelectorPos;
+  fuelControl: FuelControlPos;
+  autostart: boolean;
+  apuRunning: boolean;
+  apuBleedPsi: number;
+  instruments: Instruments;
 
   // View / UI toggles
   viewMode: ViewMode;
@@ -79,6 +121,11 @@ export interface SimStore {
   setMach: (v: number) => void;
   setIsaOffset: (v: number) => void;
 
+  setStartSelector: (p: StartSelectorPos) => void;
+  setFuelControl: (p: FuelControlPos) => void;
+  setAutostart: (on: boolean) => void;
+  setApuRunning: (on: boolean) => void;
+
   tick: (dt: number) => void;
 
   setViewMode: (m: ViewMode) => void;
@@ -98,6 +145,7 @@ export interface SimStore {
 
   resetToTakeoff: () => void;
   resetToCruise: () => void;
+  resetToColdDark: () => void;
 }
 
 type ToggleKey =
@@ -107,8 +155,31 @@ type ToggleKey =
   | 'showTempColors'
   | 'showVelocityVectors';
 
-const initialSpool = equilibriumDynamics(INITIAL_INPUTS, config);
+// Cold-and-dark boot state.
+const initialSpool: SpoolState = { n1: 0, n2: 0, lpAngle: 0, hpAngle: 0, tt4: 288.15 };
 const initialEngine = computeEngineState(INITIAL_INPUTS, config, initialSpool);
+const initialSeq = createOffSequence(15);
+
+function buildInstruments(
+  cfg: EngineConfig,
+  spool: SpoolState,
+  engine: EngineState,
+  seq: StartSequenceState,
+): Instruments {
+  const subIdle = isSequenceActive(seq.runState);
+  return {
+    n1Pct: spool.n1 * 100,
+    n2Pct: spool.n2 * 100,
+    n1Rpm: spool.n1 * cfg.n1RatedRpm,
+    n2Rpm: spool.n2 * cfg.n2RatedRpm,
+    // Below idle the EEC schedule owns FF and the lagged start EGT is the truth;
+    // at/above idle the thermodynamic cycle's values take over (they're
+    // calibrated to meet at the idle point, so the gauges never jump).
+    egtC: subIdle ? seq.egtC : engine.egtC,
+    fuelFlowKgs: subIdle ? seq.fuelFlow : engine.fuelFlow,
+    oilPressurePsi: seq.oilPressurePsi,
+  };
+}
 
 export const useSimStore = create<SimStore>((set, get) => ({
   config,
@@ -118,6 +189,14 @@ export const useSimStore = create<SimStore>((set, get) => ({
   spool: initialSpool,
   surgeMargin: initialEngine.surgeMarginSteady,
   transientActive: false,
+
+  startSeq: initialSeq,
+  startSelector: 'NORM',
+  fuelControl: 'CUTOFF',
+  autostart: true,
+  apuRunning: false,
+  apuBleedPsi: 0,
+  instruments: buildInstruments(config, initialSpool, initialEngine, initialSeq),
 
   viewMode: 'cutaway',
   exhaustStyle: 'volumetric',
@@ -149,18 +228,89 @@ export const useSimStore = create<SimStore>((set, get) => ({
   setMach: (v) => get().setInputs({ mach: clamp(v, 0, 0.85) }),
   setIsaOffset: (v) => get().setInputs({ isaTempOffsetC: clamp(v, -20, 20) }),
 
+  setStartSelector: (p) => set({ startSelector: p }),
+  setFuelControl: (p) => set({ fuelControl: p }),
+  setAutostart: (on) => set({ autostart: on }),
+  setApuRunning: (on) => set({ apuRunning: on }),
+
   tick: (dt) => {
-    const { paused, spool, engine, inputs, config: cfg } = get();
-    if (paused) return;
+    const state = get();
+    if (state.paused) return;
     const dtClamped = clamp(dt, 0, 0.1); // guard against tab-switch hitches
-    // Integrate the slow states (spools + hot-section temp) toward their
-    // targets, then re-evaluate the whole cycle at the new dynamic state. This
-    // is what makes pressures, flows, temperatures and thrust evolve gradually.
-    const nextSpool = advanceSpools(spool, engine.targetN1, engine.targetN2, engine.tt4Steady, dtClamped, cfg);
-    const nextEngine = computeEngineState(inputs, cfg, nextSpool);
-    const penalty = transientSurgePenalty(nextEngine.targetN2, nextSpool.n2);
-    const surgeMargin = clamp(nextEngine.surgeMarginSteady - penalty, 0, 100);
-    set({ spool: nextSpool, engine: nextEngine, surgeMargin, transientActive: penalty > 8 });
+    const cfg = state.config;
+
+    // APU bleed pressure spools up/down over ~10 s.
+    const bleedTarget = state.apuRunning ? APU_BLEED_PSI : 0;
+    const apuBleedPsi =
+      state.apuBleedPsi + (bleedTarget - state.apuBleedPsi) * (1 - Math.exp(-dtClamped / 4));
+
+    let seq = state.startSeq;
+
+    // A fuel chop while running hands the spools back to the sequence.
+    if (seq.runState === 'running' && state.fuelControl === 'CUTOFF') {
+      seq = beginShutdown(seq);
+    }
+
+    if (seq.runState === 'running') {
+      // --- Running regime: first-order lags toward the throttle targets. ---
+      const nextSpool = advanceSpools(
+        state.spool,
+        state.engine.targetN1,
+        state.engine.targetN2,
+        state.engine.tt4Steady,
+        dtClamped,
+        cfg,
+      );
+      const nextEngine = computeEngineState(state.inputs, cfg, nextSpool);
+      const penalty = transientSurgePenalty(nextEngine.targetN2, nextSpool.n2);
+      const surgeMargin = clamp(nextEngine.surgeMarginSteady - penalty, 0, 100);
+      // Keep the sequence's thermal state synced so a future shutdown starts
+      // from the real EGT (no gauge jump at the CUTOFF moment).
+      const syncedSeq: StartSequenceState =
+        seq.egtC === nextEngine.egtC && seq.fuelFlow === nextEngine.fuelFlow
+          ? seq
+          : { ...seq, egtC: nextEngine.egtC, fuelFlow: nextEngine.fuelFlow, oilPressurePsi: 10 + 120 * Math.pow(nextSpool.n2, 1.3) };
+      set({
+        spool: nextSpool,
+        engine: nextEngine,
+        surgeMargin,
+        transientActive: penalty > 4,
+        apuBleedPsi,
+        startSeq: syncedSeq,
+        instruments: buildInstruments(cfg, nextSpool, nextEngine, syncedSeq),
+      });
+      return;
+    }
+
+    // --- Sub-idle regime: the start/shutdown sequence owns the spools. ---
+    const controls: StartControls = {
+      startSelector: state.startSelector,
+      fuelControl: state.fuelControl,
+      autostart: state.autostart,
+      bleedPsi: apuBleedPsi,
+    };
+    const { seq: nextSeq, spool: nextSpool } = advanceStartSequence(
+      seq,
+      state.spool,
+      controls,
+      state.inputs,
+      cfg,
+      dtClamped,
+    );
+    const nextEngine = computeEngineState(state.inputs, cfg, nextSpool);
+    // The EEC releases the latched START selector at starter cutout.
+    const startSelector =
+      nextSeq.selectorRelease && state.startSelector === 'START' ? 'NORM' : state.startSelector;
+    set({
+      spool: nextSpool,
+      engine: nextEngine,
+      surgeMargin: nextEngine.surgeMarginSteady,
+      transientActive: false,
+      apuBleedPsi,
+      startSeq: nextSeq,
+      startSelector,
+      instruments: buildInstruments(cfg, nextSpool, nextEngine, nextSeq),
+    });
   },
 
   setViewMode: (m) => set({ viewMode: m }),
@@ -191,11 +341,49 @@ export const useSimStore = create<SimStore>((set, get) => ({
     // Snap the dynamic state to the settled takeoff point (no spool-up wait).
     const spool = equilibriumDynamics(TAKEOFF_INPUTS, get().config);
     const engine = computeEngineState(TAKEOFF_INPUTS, get().config, spool);
-    set({ inputs: TAKEOFF_INPUTS, engine, spool, surgeMargin: engine.surgeMarginSteady });
+    const startSeq = createRunningSequence(engine.egtC);
+    set({
+      inputs: TAKEOFF_INPUTS,
+      engine,
+      spool,
+      surgeMargin: engine.surgeMarginSteady,
+      startSeq,
+      fuelControl: 'RUN',
+      startSelector: 'NORM',
+      instruments: buildInstruments(get().config, spool, engine, startSeq),
+    });
   },
   resetToCruise: () => {
     const spool = equilibriumDynamics(CRUISE_INPUTS, get().config);
     const engine = computeEngineState(CRUISE_INPUTS, get().config, spool);
-    set({ inputs: CRUISE_INPUTS, engine, spool, surgeMargin: engine.surgeMarginSteady });
+    const startSeq = createRunningSequence(engine.egtC);
+    set({
+      inputs: CRUISE_INPUTS,
+      engine,
+      spool,
+      surgeMargin: engine.surgeMarginSteady,
+      startSeq,
+      fuelControl: 'RUN',
+      startSelector: 'NORM',
+      instruments: buildInstruments(get().config, spool, engine, startSeq),
+    });
+  },
+  resetToColdDark: () => {
+    const spool: SpoolState = { n1: 0, n2: 0, lpAngle: 0, hpAngle: 0, tt4: 288.15 };
+    const inputs = { ...get().inputs, throttle: 0 };
+    const engine = computeEngineState(inputs, get().config, spool);
+    const startSeq = createOffSequence(15);
+    set({
+      inputs,
+      engine,
+      spool,
+      surgeMargin: engine.surgeMarginSteady,
+      startSeq,
+      fuelControl: 'CUTOFF',
+      startSelector: 'NORM',
+      apuRunning: false,
+      apuBleedPsi: 0,
+      instruments: buildInstruments(get().config, spool, engine, startSeq),
+    });
   },
 }));

@@ -135,8 +135,17 @@ export interface EngineConfig {
   takeoffTurbineInletTemp: number;
   turbineInletTempRedline: number;
 
+  // Displayed EGT (T49, LPT inlet) limits [°C] — certified values from the TCDS.
+  egtTakeoffLimitC: number; // 5-minute takeoff limit
+  egtMaxContinuousC: number;
+  egtTransientLimitC: number; // 30-second transient
+  egtStartLimitGroundC: number; // red start-limit line on the EICAS EGT dial
+  egtStartLimitFlightC: number;
+
   // Mass flow (kg/s)
   designMassFlow: number;
+  /** Core (gas-generator) mass flow at the takeoff operating point [kg/s]. */
+  designCoreMassFlow: number;
   idleMassFlow: number;
   maxMassFlow: number;
   /** Dimensionless tuning factor so SL-static full-throttle lands near design. */
@@ -146,9 +155,32 @@ export interface EngineConfig {
   /** Target net thrust at sea-level static, 100% throttle [N]. */
   designThrust: number;
 
-  // Spool redline speeds [rpm] (for display only)
-  lpSpoolRedlineRpm: number;
-  hpSpoolRedlineRpm: number;
+  // Spool speed definitions. n1/n2 state variables are *fractions of the 100%
+  // rated speed* (so the displayed N1%/N2% read like a real EICAS); redline
+  // sits ABOVE 1.0, exactly as certified.
+  /** Physical rpm at 100% N1. */
+  n1RatedRpm: number;
+  /** Physical rpm at 100% N2. */
+  n2RatedRpm: number;
+  /** N1 redline as a fraction of rated speed (e.g. 1.105 = 110.5%). */
+  n1RedlineFrac: number;
+  /** N2 redline as a fraction of rated speed (e.g. 1.21 = 121.0%). */
+  n2RedlineFrac: number;
+
+  // Operating anchors (fractions of rated speed).
+  /** Stable minimum ground idle. */
+  idleN1: number;
+  idleN2: number;
+  /** Spool speeds commanded at 100% throttle, sea-level static. */
+  takeoffN1: number;
+  takeoffN2: number;
+
+  // Idle pressure-ratio anchor (real engines idle around OPR ~8-10, not ~1).
+  idleOverallPressureRatio: number;
+
+  // Fuel-flow anchors [kg/s] used by the EEC start schedule + idle governor.
+  idleFuelFlow: number;
+  takeoffFuelFlow: number;
 
   // Representative annulus flow areas per station [m^2], for axial-velocity estimates.
   stationAreas: Record<StationId, number>;
@@ -184,7 +216,14 @@ export interface EngineState {
   compressorExitPressure: number; // Pt3
   turbineInletTemp: number; // Tt4
   hptExitTemp: number; // Tt45
-  exhaustGasTemp: number; // Tt5 (EGT)
+  exhaustGasTemp: number; // Tt5 (LPT exit)
+  /**
+   * Displayed EGT [°C] at the certified measurement plane (T49, LPT inlet) —
+   * the number a real EICAS shows and the one the TCDS limits apply to.
+   * Derived from the cycle's HPT-exit temperature through a two-point
+   * calibration (idle / takeoff anchors).
+   */
+  egtC: number;
 
   // Nozzle outputs
   coreExhaustVelocity: number;
@@ -208,7 +247,9 @@ export interface EngineState {
     lpt: number;
   };
 
-  // Spool targets (normalized 0–1 of redline). The store integrates these with inertia.
+  // Spool targets (fraction of rated speed; 1.0 = 100%). The store integrates
+  // these with inertia. Only meaningful while the engine is RUNNING — during a
+  // start/shutdown the sequence's torque balance owns the spools instead.
   targetN1: number;
   targetN2: number;
   /** Equilibrium turbine-inlet temperature the hot section is heading toward [K].
@@ -238,9 +279,9 @@ export interface EngineState {
  * than instantaneously.
  */
 export interface SpoolState {
-  /** Current LP spool fraction of redline (0–1), lagged behind targetN1. */
+  /** Current LP spool speed as a fraction of 100% rated (redline ≈ 1.105). */
   n1: number;
-  /** Current HP spool fraction of redline (0–1), lagged behind targetN2. */
+  /** Current HP spool speed as a fraction of 100% rated (redline ≈ 1.21). */
   n2: number;
   /** Accumulated rotation angle of the LP spool [rad] (for rendering). */
   lpAngle: number;

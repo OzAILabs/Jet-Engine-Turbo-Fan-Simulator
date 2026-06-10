@@ -48,15 +48,15 @@ function Readout(props: {
 export function ReadoutPanel() {
   // Reactive subscriptions: only re-render when one of these slices changes.
   const engine = useSimStore((s) => s.engine);
-  const spool = useSimStore((s) => s.spool);
+  const instruments = useSimStore((s) => s.instruments);
   const surgeMargin = useSimStore((s) => s.surgeMargin);
   const redline = useSimStore((s) => s.config.turbineInletTempRedline);
-  const lpRedlineRpm = useSimStore((s) => s.config.lpSpoolRedlineRpm);
-  const hpRedlineRpm = useSimStore((s) => s.config.hpSpoolRedlineRpm);
+  const egtTakeoffLimitC = useSimStore((s) => s.config.egtTakeoffLimitC);
 
   // Pre-compute the warn flags once (keeps the JSX readable).
   const turbineHot = engine.turbineInletTemp > redline;
-  const surgeLow = surgeMargin < 25;
+  const egtHot = instruments.egtC > egtTakeoffLimitC;
+  const surgeLow = surgeMargin < 12;
 
   return (
     <div className="panel">
@@ -67,11 +67,11 @@ export function ReadoutPanel() {
         <Readout label="Net thrust" value={fmt(newtonsToKn(engine.netThrust), 0)} unit="kN" />
         <Readout label="Net thrust" value={fmt(newtonsToLbf(engine.netThrust), 0)} unit="lbf" />
 
-        {/* --- Spool speeds (normalized % and actual RPM) ---------------- */}
-        <Readout label="Fan / N1" value={fmt(spool.n1 * 100, 1)} unit="%" />
-        <Readout label="N2 (HP spool)" value={fmt(spool.n2 * 100, 1)} unit="%" />
-        <Readout label="N1 (LP) RPM" value={fmt(spool.n1 * lpRedlineRpm, 0)} unit="rpm" />
-        <Readout label="N2 (HP) RPM" value={fmt(spool.n2 * hpRedlineRpm, 0)} unit="rpm" />
+        {/* --- Spool speeds (% of rated speed and physical RPM, as EICAS) - */}
+        <Readout label="N1 (fan)" value={fmt(instruments.n1Pct, 1)} unit="%" />
+        <Readout label="N2 (core)" value={fmt(instruments.n2Pct, 1)} unit="%" />
+        <Readout label="N1 RPM" value={fmt(instruments.n1Rpm, 0)} unit="rpm" />
+        <Readout label="N2 RPM" value={fmt(instruments.n2Rpm, 0)} unit="rpm" />
 
         {/* --- Mass flow ------------------------------------------------- */}
         <Readout label="Core mass flow" value={fmt(engine.coreMassFlow, 1)} unit="kg/s" />
@@ -79,8 +79,8 @@ export function ReadoutPanel() {
         <Readout label="Total mass flow" value={fmt(engine.totalMassFlow, 1)} unit="kg/s" />
 
         {/* --- Fuel ------------------------------------------------------ */}
-        <Readout label="Fuel flow" value={fmt(engine.fuelFlow, 2)} unit="kg/s" />
-        <Readout label="Fuel flow" value={fmt(engine.fuelFlow * 3600, 0)} unit="kg/h" />
+        <Readout label="Fuel flow" value={fmt(instruments.fuelFlowKgs, 2)} unit="kg/s" />
+        <Readout label="Fuel flow" value={fmt(instruments.fuelFlowKgs * 3600, 0)} unit="kg/h" />
 
         {/* --- Pressure ratios ------------------------------------------ */}
         <Readout label="Bypass ratio" value={fmt(engine.bypassRatio, 2)} unit="" />
@@ -112,8 +112,9 @@ export function ReadoutPanel() {
           unit="degC"
           warn={turbineHot}
         />
-        <Readout label="EGT" value={fmt(engine.exhaustGasTemp, 0)} unit="K" />
-        <Readout label="EGT" value={fmt(kelvinToCelsius(engine.exhaustGasTemp), 0)} unit="degC" />
+        {/* EGT is the certified T49 (LPT inlet) the real EICAS displays. */}
+        <Readout label="EGT (T49)" value={fmt(instruments.egtC, 0)} unit="degC" warn={egtHot} />
+        <Readout label="Oil pressure" value={fmt(instruments.oilPressurePsi, 0)} unit="psi" />
 
         {/* --- Exhaust velocities ---------------------------------------- */}
         <Readout label="Core exhaust velocity" value={fmt(engine.coreExhaustVelocity, 0)} unit="m/s" />

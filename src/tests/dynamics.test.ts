@@ -18,9 +18,10 @@ function simulate(start: SpoolState, inputs: EngineInputs, seconds: number, step
 }
 
 describe('transient dynamics', () => {
-  it('commanded spool targets rise with throttle', () => {
+  it('commanded spool targets rise with throttle, bottoming out at idle', () => {
     expect(commandedSpeeds(takeoff).targetN2).toBeGreaterThan(commandedSpeeds(idle).targetN2);
-    expect(commandedSpeeds({ ...idle, throttle: 0 }).targetN2).toBeLessThan(0.02);
+    // Throttle 0 commands IDLE (N2 ~66%) — shutting down is the fuel switch's job.
+    expect(commandedSpeeds({ ...idle, throttle: 0 }).targetN2).toBeCloseTo(cfg.idleN2, 2);
   });
 
   it('spools and temperature LAG a throttle slam (no instantaneous jump)', () => {

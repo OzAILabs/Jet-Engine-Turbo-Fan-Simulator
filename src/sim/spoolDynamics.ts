@@ -43,9 +43,9 @@ export function advanceSpools(
   const n2 = prev.n2 + (targetN2 - prev.n2) * a2;
   const tt4 = prev.tt4 + (targetTt4 - prev.tt4) * aT;
 
-  // Convert fraction-of-redline into an angular increment for rendering.
-  const lpOmega = n1 * config.lpSpoolRedlineRpm * TWO_PI_OVER_60; // rad/s
-  const hpOmega = n2 * config.hpSpoolRedlineRpm * TWO_PI_OVER_60; // rad/s
+  // Convert fraction-of-rated-speed into an angular increment for rendering.
+  const lpOmega = n1 * config.n1RatedRpm * TWO_PI_OVER_60; // rad/s
+  const hpOmega = n2 * config.n2RatedRpm * TWO_PI_OVER_60; // rad/s
 
   return {
     n1,
@@ -64,5 +64,7 @@ export function advanceSpools(
 export function transientSurgePenalty(targetN2: number, currentN2: number): number {
   const gap = targetN2 - currentN2; // positive when accelerating
   if (gap <= 0) return 0;
-  return Math.min(60, gap * 180);
+  // Scaled so a full idle→takeoff slam momentarily eats ~15–18 points of the
+  // ~30% steady margin — uncomfortable but survivable, like the real thing.
+  return Math.min(18, gap * 45);
 }

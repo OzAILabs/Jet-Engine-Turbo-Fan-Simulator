@@ -12,6 +12,16 @@
  * the engine spools up and down — and temperatures lag even further behind
  * because of thermal inertia.
  *
+ * Spool speeds are *fractions of 100% rated speed* exactly as a real EICAS
+ * displays them (N1 100% = 2,355 rpm, N2 100% = 9,332 rpm on the GE90-115B;
+ * redlines sit at 110.5% / 121.0% [TCDS]). Ground idle is N2 ≈ 66%, N1 ≈ 18%.
+ *
+ * Below idle the engine is NOT driven by this file — a start/shutdown sequence
+ * (startSequence.ts) integrates the spools from a starter/combustion/drag
+ * torque balance and owns the fuel schedule; this cycle is still evaluated at
+ * whatever spool state results, so the 3D scene and station readouts stay live
+ * through a start.
+ *
  * `computeEngineState(inputs)` with no dynamic state returns the *equilibrium*
  * (fully settled) operating point for that throttle — used by the tests and the
  * "reset to takeoff/cruise" snaps. `computeEngineState(inputs, config, dyn)`
@@ -31,6 +41,8 @@ import {
   FAN_EFFICIENCY,
   GAMMA_AIR,
   GAMMA_GAS,
+  ISA_SEA_LEVEL_PRESSURE,
+  ISA_SEA_LEVEL_TEMP,
   NOZZLE_EFFICIENCY,
   R_AIR,
   TURBINE_EFFICIENCY,
@@ -58,23 +70,17 @@ import type {
 } from './types';
 import { clamp, lerp, smootherstep } from './units';
 
-// ---------------------------------------------------------------------------
-// Idle reference spool fractions. At "ground idle" the spools are not stopped —
-// the HP spool windmills around 60% and the LP fan around 22%. Below these the
-// engine is sub-idle / shutting down.
-// ---------------------------------------------------------------------------
-const N2_IDLE = 0.6;
-const N1_IDLE = 0.22;
-
-// --- Maps from spool speed to an operating fraction 0..1 (idle → max) -------
-/** Core operating fraction: 0 at HP idle, 1 at HP redline. */
-const coreOpFrac = (n2: number) => clamp((n2 - N2_IDLE) / (1 - N2_IDLE), 0, 1);
-/** Fan operating fraction: 0 at LP idle, 1 at LP redline. */
-const fanOpFrac = (n1: number) => clamp((n1 - N1_IDLE) / (1 - N1_IDLE), 0, 1);
-/** Smooth "is the core running" gate: 0 when shut down, 1 at/above idle. */
-const coreRun = (n2: number) => smootherstep(0.05, N2_IDLE, n2);
-/** Smooth "is the fan turning" gate (mass flow): 0 when stopped, 1 at/above idle. */
-const fanRun = (n1: number) => smootherstep(0.03, N1_IDLE, n1);
+// --- Maps from spool speed to an operating fraction 0..1 (idle → takeoff) ---
+/** Core operating fraction: 0 at HP idle, 1 at the takeoff N2. */
+const coreOpFrac = (n2: number, c: EngineConfig) =>
+  clamp((n2 - c.idleN2) / (c.takeoffN2 - c.idleN2), 0, 1);
+/** Fan operating fraction: 0 at LP idle, 1 at the takeoff N1. */
+const fanOpFrac = (n1: number, c: EngineConfig) =>
+  clamp((n1 - c.idleN1) / (c.takeoffN1 - c.idleN1), 0, 1);
+/** Smooth "is the core at/above idle" gate: 0 when shut down, 1 at/above idle. */
+const coreRun = (n2: number, c: EngineConfig) => smootherstep(0.05, c.idleN2, n2);
+/** Smooth "is the fan pumping" gate: 0 when stopped, 1 at/above idle. */
+const fanRun = (n1: number, c: EngineConfig) => smootherstep(0.03, c.idleN1, n1);
 
 /** Subsonic inlet total-pressure recovery (~0.98 typical). */
 const inletPressureRecovery = (mach: number) => clamp(1 - 0.03 * mach * mach, 0.9, 1.0);
@@ -83,17 +89,43 @@ const inletPressureRecovery = (mach: number) => clamp(1 - 0.03 * mach * mach, 0.
 const compressorEfficiency = (opFrac: number) =>
   lerp(COMPRESSOR_EFFICIENCY_LOW, COMPRESSOR_EFFICIENCY_HIGH, clamp(opFrac, 0, 1));
 
+/**
+ * Core (gas-generator) flow fraction vs corrected HP spool speed. A steep
+ * power law through the idle anchor (~12.6% of design core flow at N2 66%)
+ * with a gentle linear floor below ~25% N2 so the starter-driven motoring
+ * regime pumps a small but non-zero core flow (real engines flow air during
+ * dry cranking — that's what cools a hot start).
+ * Shared with startSequence.ts so sub-idle EGT uses the same airflow.
+ */
+export function coreFlowFraction(n2c: number, config: EngineConfig): number {
+  const x = Math.max(0, n2c / config.takeoffN2);
+  const powerLaw = Math.pow(x, 4.2);
+  const subIdleFloor = 0.1412 * n2c; // linear: ~3.5% of design flow at 25% N2
+  return Math.max(powerLaw, subIdleFloor) * smootherstep(0.01, 0.06, n2c);
+}
+
 // ---------------------------------------------------------------------------
 // Commanded spool speeds (the throttle's job). These are the *targets* the
-// store integrates toward with inertia — they are not the instantaneous cycle.
+// store integrates toward with inertia while the engine is RUNNING. The lever
+// spans idle → takeoff; it does NOT start or stop the engine — that is the
+// fuel control switch + start sequence's job (startSequence.ts), exactly as
+// on the real flight deck.
 // ---------------------------------------------------------------------------
-export function commandedSpeeds(inputs: EngineInputs): { targetN1: number; targetN2: number } {
+export function commandedSpeeds(
+  inputs: EngineInputs,
+  config: EngineConfig = defaultEngineConfig,
+): { targetN1: number; targetN2: number } {
   const tf = clamp(inputs.throttle / 100, 0, 1);
-  // Run factor: the engine is shut down at throttle 0 and lights off over the
-  // first few percent of lever travel.
-  const rf = smootherstep(0, 7, inputs.throttle);
-  const targetN2 = clamp((0.6 + 0.4 * Math.sqrt(tf)) * rf, 0, 1.05);
-  const targetN1 = clamp((0.25 + 0.75 * Math.pow(tf, 0.7)) * rf, 0, 1.05);
+  const targetN2 = clamp(
+    config.idleN2 + (config.takeoffN2 - config.idleN2) * Math.sqrt(tf),
+    0,
+    config.takeoffN2 + 0.02,
+  );
+  const targetN1 = clamp(
+    config.idleN1 + (config.takeoffN1 - config.idleN1) * Math.pow(tf, 0.7),
+    0,
+    config.takeoffN1 + 0.02,
+  );
   return { targetN1, targetN2 };
 }
 
@@ -136,13 +168,13 @@ function computeRaw(
   const atmosphere = computeISA(inputs.altitudeFt, inputs.isaTempOffsetC);
   const mach = clamp(inputs.mach, 0, 0.85);
   const v0 = mach * atmosphere.speedOfSound;
-  const { targetN1, targetN2 } = commandedSpeeds(inputs);
+  const { targetN1, targetN2 } = commandedSpeeds(inputs, config);
 
   // Operating fractions & run gates from the (lagged) spool speeds.
-  const cOp = coreOpFrac(n2);
-  const fOp = fanOpFrac(n1);
-  const cRun = coreRun(n2);
-  const fRun = fanRun(n1);
+  const cOp = coreOpFrac(n2, config);
+  const fOp = fanOpFrac(n1, config);
+  const cRun = coreRun(n2, config);
+  const fRun = fanRun(n1, config);
 
   // --- Inlet: freestream → fan face (station 0 → 2) ---
   const ramFactor = 1 + ((GAMMA_AIR - 1) / 2) * mach * mach;
@@ -152,22 +184,38 @@ function computeRaw(
   const tt2 = tt0;
   const fanFace: ThermoPoint = { t: tt2, p: pt2 };
 
-  // --- Mass flow & bypass split (mass flow tracks fan speed) ---
+  // --- Mass flows -----------------------------------------------------------
+  // Each stream tracks its own spool, so the bypass ratio is a DERIVED result:
+  //  • Bypass stream: fan-pumped capture flow, ρ·A·V scaled by fan speed.
+  //  • Core stream: corrected-flow scaling W = W_design·frac(N2c)·δ/√θ — the
+  //    textbook way a gas generator's flow tracks corrected speed and inlet
+  //    conditions. This keeps the core flowing during a starter-driven crank
+  //    (N2 turning, fan nearly stopped), which is what a real start looks like.
   const fanArea = Math.PI * (config.fanTipRadius ** 2 - config.fanHubRadius ** 2);
   const vCapture = Math.max(v0, 55 + 95 * fOp);
-  const totalMassFlow = clamp(
+  const bypassMassFlow = clamp(
     atmosphere.density * fanArea * vCapture * (0.15 + 0.85 * fOp) * config.massFlowCalibration * fRun,
     0,
     config.maxMassFlow,
   );
-  const bypassRatio = lerp(config.bypassRatioIdle, config.bypassRatioTakeoff, Math.sqrt(cOp));
-  const coreMassFlow = totalMassFlow / (1 + bypassRatio);
-  const bypassMassFlow = totalMassFlow - coreMassFlow;
+  const theta2 = tt2 / ISA_SEA_LEVEL_TEMP;
+  const delta2 = pt2 / ISA_SEA_LEVEL_PRESSURE;
+  const n2Corrected = n2 / Math.sqrt(Math.max(theta2, EPS));
+  const coreMassFlow = clamp(
+    config.designCoreMassFlow * coreFlowFraction(n2Corrected, config) * (delta2 / Math.sqrt(Math.max(theta2, EPS))),
+    0,
+    config.designCoreMassFlow * 1.25,
+  );
+  const totalMassFlow = clamp(bypassMassFlow + coreMassFlow, 0, config.maxMassFlow);
+  const bypassRatio = coreMassFlow > 0.5 ? bypassMassFlow / coreMassFlow : 0;
 
-  // --- Pressure ratios (functions of corrected spool speed) ---
+  // --- Pressure ratios (functions of spool operating fraction) ---
   const fanPR = 1 + fRun * (lerp(1.05, config.fanPressureRatioMax, Math.pow(fOp, 1.1)) - 1);
   const boosterPR = 1 + cRun * (lerp(1.05, config.boosterPressureRatioMax, Math.pow(cOp, 1.2)) - 1);
-  const opr = 1 + cRun * (lerp(1.2, config.overallPressureRatioMax, Math.pow(cOp, 1.25)) - 1);
+  // Real engines idle around OPR ~9, not ~1 — the idle anchor matters for
+  // getting compressor-exit temperature (and therefore idle fuel flow) right.
+  const opr =
+    1 + cRun * (lerp(config.idleOverallPressureRatio, config.overallPressureRatioMax, Math.pow(cOp, 1.25)) - 1);
   const hpcPR = Math.max(1.01, opr / (fanPR * boosterPR));
   const compEff = compressorEfficiency(cOp);
 
@@ -218,6 +266,15 @@ function computeRaw(
   const rawBypassThrust = bypassMassFlow * (bypassNozzle.velocity - v0);
   const rawNetThrust = rawCoreThrust + rawBypassThrust;
 
+  // --- Displayed EGT (T49, LPT inlet) ---
+  // The certified EGT plane sits between the turbines; thermocouples read a
+  // cooled, mixed-out gas. We map the cycle's HPT-exit temperature through a
+  // two-point calibration (idle/takeoff anchors) so the displayed value matches
+  // published GE90-115B behavior (~440 °C idle, ~1,045 °C takeoff vs the
+  // 1,090 °C redline).
+  const egtCal = egtCalibration(config);
+  const egtC = egtCal.a * hpt.exit.t + egtCal.b - 273.15;
+
   // --- Stages list ---
   const stages: StagePoint[] = [
     { section: 'fan', index: 0, pIn: fanFace.p, pOut: fanOut.p, tIn: fanFace.t, tOut: fanOut.t, pressureRatio: fanPR },
@@ -251,23 +308,27 @@ function computeRaw(
   };
 
   // --- Diagnostics: surge margin ---
-  const prFraction = clamp(opr / config.overallPressureRatioMax, 0, 1.3);
-  const flowFraction = clamp(totalMassFlow / config.designMassFlow, 0.05, 1.3);
-  const loading = prFraction / flowFraction;
-  const surgeMarginSteady = clamp(100 - 30 * Math.max(0, loading - 1.0), 0, 100);
+  // Real engines run ~20–30% surge margin on the operating line: highest at
+  // idle, eroded toward high power, and eaten into during accel transients
+  // (the store subtracts a transient penalty). The old "100% at idle" display
+  // was fiction.
+  const surgeMarginSteady = clamp(30 - 9 * cOp + 2 * (1 - cRun), 0, 100);
 
   const feasible = hpt.feasible && lpt.feasible;
 
   const warnings = buildWarnings({
     tt4: turbineInlet.t,
     redline: config.turbineInletTempRedline,
-    cautionTt4: config.takeoffTurbineInletTemp + 20,
+    egtC,
+    egtTakeoffLimitC: config.egtTakeoffLimitC,
+    egtMaxContinuousC: config.egtMaxContinuousC,
     surgeMargin: surgeMarginSteady,
     fuelAirRatio: f,
     feasible,
     netThrust: rawNetThrust,
     throttle: inputs.throttle,
     n2,
+    idleN2: config.idleN2,
   });
 
   const tsfc = rawNetThrust > EPS ? fuelFlow / rawNetThrust : 0;
@@ -291,6 +352,7 @@ function computeRaw(
     turbineInletTemp: turbineInlet.t,
     hptExitTemp: hpt.exit.t,
     exhaustGasTemp: lpt.exit.t,
+    egtC,
     coreExhaustVelocity: coreNozzle.velocity,
     bypassExhaustVelocity: bypassNozzle.velocity,
     coreNozzleChoked: coreNozzle.choked,
@@ -323,26 +385,33 @@ function computeRaw(
 function buildWarnings(p: {
   tt4: number;
   redline: number;
-  cautionTt4: number;
+  egtC: number;
+  egtTakeoffLimitC: number;
+  egtMaxContinuousC: number;
   surgeMargin: number;
   fuelAirRatio: number;
   feasible: boolean;
   netThrust: number;
   throttle: number;
   n2: number;
+  idleN2: number;
 }): Warning[] {
   const w: Warning[] = [];
-  const running = p.n2 > 0.1;
+  const running = p.n2 > p.idleN2 - 0.08;
+
+  if (p.egtC > p.egtTakeoffLimitC) {
+    w.push({ id: 'egt-redline', severity: 'critical', message: `EGT ${Math.round(p.egtC)} °C exceeds the ${p.egtTakeoffLimitC} °C takeoff limit` });
+  } else if (running && p.egtC > p.egtMaxContinuousC) {
+    w.push({ id: 'egt-mct', severity: 'caution', message: `EGT ${Math.round(p.egtC)} °C above the ${p.egtMaxContinuousC} °C max-continuous limit (5-min takeoff window)` });
+  }
 
   if (p.tt4 > p.redline) {
     w.push({ id: 'tit-redline', severity: 'critical', message: `Turbine inlet temp ${Math.round(p.tt4)} K exceeds redline ${p.redline} K` });
-  } else if (p.tt4 > p.cautionTt4) {
-    w.push({ id: 'tit-high', severity: 'caution', message: `Turbine inlet temp ${Math.round(p.tt4)} K is high` });
   }
 
-  if (running && p.surgeMargin < 12) {
+  if (running && p.surgeMargin < 7) {
     w.push({ id: 'surge-critical', severity: 'critical', message: `Compressor surge margin critically low (${Math.round(p.surgeMargin)}%)` });
-  } else if (running && p.surgeMargin < 25) {
+  } else if (running && p.surgeMargin < 12) {
     w.push({ id: 'surge-low', severity: 'caution', message: `Compressor surge margin low (${Math.round(p.surgeMargin)}%)` });
   }
 
@@ -364,14 +433,17 @@ export function equilibriumDynamics(
   inputs: EngineInputs,
   config: EngineConfig = defaultEngineConfig,
 ): SpoolState {
-  const { targetN1, targetN2 } = commandedSpeeds(inputs);
+  const { targetN1, targetN2 } = commandedSpeeds(inputs, config);
   // Probe the settled Tt4 at these spools (no accel bump: target == current).
   const probe = computeRaw(inputs, config, targetN1, targetN2, null);
   return { n1: targetN1, n2: targetN2, lpAngle: 0, hpAngle: 0, tt4: probe.turbineInletTemp };
 }
 
 // ---------------------------------------------------------------------------
-// Thrust calibration (memoized per config) — referenced to settled takeoff.
+// Calibrations (memoized per config).
+//  • Thrust: scale so settled SLS/100% produces exactly the rated thrust.
+//  • EGT: linear map from the cycle's HPT-exit temperature to the displayed
+//    T49 [K], anchored at idle (~713 K = 440 °C) and takeoff (~1318 K = 1045 °C).
 // ---------------------------------------------------------------------------
 const calibrationCache = new WeakMap<EngineConfig, number>();
 
@@ -384,6 +456,33 @@ export function thrustCalibration(config: EngineConfig): number {
   const k = ref.netThrust > EPS ? config.designThrust / ref.netThrust : 1;
   calibrationCache.set(config, k);
   return k;
+}
+
+/** Displayed-EGT anchors [°C]: gate idle and full takeoff. [EST video/margin data] */
+const EGT_IDLE_ANCHOR_C = 440;
+const EGT_TAKEOFF_ANCHOR_C = 1045; // ~45 °C margin to the 1,090 °C redline (newish engine)
+
+const egtCalCache = new WeakMap<EngineConfig, { a: number; b: number }>();
+
+export function egtCalibration(config: EngineConfig): { a: number; b: number } {
+  const cached = egtCalCache.get(config);
+  if (cached !== undefined) return cached;
+  // Temporarily install an identity map so the probe evaluations don't recurse.
+  egtCalCache.set(config, { a: 1, b: 0 });
+  const probe = (throttle: number) => {
+    const inputs: EngineInputs = { throttle, altitudeFt: 0, mach: 0, isaTempOffsetC: 0 };
+    const eq = equilibriumDynamics(inputs, config);
+    return computeRaw(inputs, config, eq.n1, eq.n2, null).hptExitTemp;
+  };
+  const t45Idle = probe(0);
+  const t45Takeoff = probe(100);
+  const yIdle = EGT_IDLE_ANCHOR_C + 273.15;
+  const yTakeoff = EGT_TAKEOFF_ANCHOR_C + 273.15;
+  const a = (yTakeoff - yIdle) / Math.max(t45Takeoff - t45Idle, EPS);
+  const b = yIdle - a * t45Idle;
+  const cal = { a, b };
+  egtCalCache.set(config, cal);
+  return cal;
 }
 
 // ---------------------------------------------------------------------------

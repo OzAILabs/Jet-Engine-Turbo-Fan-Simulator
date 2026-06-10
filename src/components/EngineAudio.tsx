@@ -12,20 +12,20 @@ export function EngineAudio() {
     let frameId = 0;
 
     const update = () => {
-      const { config, engine, spool, soundEnabled, soundVolume } = useSimStore.getState();
+      const { config, engine, spool, instruments, soundEnabled, soundVolume } = useSimStore.getState();
       engineAudio.setVolume(soundVolume);
 
       if (soundEnabled) {
         engineAudio.update({
           n1: spool.n1,
           n2: spool.n2,
-          lpRpm: spool.n1 * config.lpSpoolRedlineRpm,
-          hpRpm: spool.n2 * config.hpSpoolRedlineRpm,
+          lpRpm: spool.n1 * config.n1RatedRpm,
+          hpRpm: spool.n2 * config.n2RatedRpm,
           thrustFraction: clamp(engine.netThrust / config.designThrust, 0, 1.2),
           massFlowFraction: clamp(engine.totalMassFlow / config.designMassFlow, 0, 1.2),
           coreVelocityFraction: clamp(engine.coreExhaustVelocity / 620, 0, 1.4),
           bypassVelocityFraction: clamp(engine.bypassExhaustVelocity / 300, 0, 1.4),
-          fuelFraction: clamp(engine.fuelFlow / 3.6, 0, 1.2),
+          fuelFraction: clamp(instruments.fuelFlowKgs / 3.6, 0, 1.2),
         });
       }
 
