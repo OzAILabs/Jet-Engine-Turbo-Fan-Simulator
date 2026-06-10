@@ -39,12 +39,23 @@ export type CameraPreset = 'iso' | 'fan' | 'compressor' | 'combustor' | 'exhaust
 export type StartSelectorPos = 'NORM' | 'START' | 'CON';
 export type FuelControlPos = 'RUN' | 'CUTOFF';
 
+export interface CameraPose {
+  position: [number, number, number];
+  target: [number, number, number];
+  /** Orthographic zoom (px per scene unit). */
+  zoom: number;
+}
+
 export interface CameraCommand {
   /** What kind of camera move was last requested. */
-  kind: 'preset' | 'focus' | 'reset';
+  kind: 'preset' | 'focus' | 'reset' | 'pose';
   preset: CameraPreset;
   /** Explicit target point (used by 'focus'); null means "use the preset's target". */
   focusPoint: [number, number, number] | null;
+  /** Fully explicit camera placement (used by 'pose' — capture scripting). */
+  pose?: CameraPose | null;
+  /** Snap instantly instead of animating (deterministic captures/scripting). */
+  instant?: boolean;
   /** Monotonic counter so effects re-run even when the target is unchanged. */
   nonce: number;
 }
@@ -93,6 +104,8 @@ export interface SimStore {
   autostart: boolean;
   apuRunning: boolean;
   apuBleedPsi: number;
+  /** Training scenario: igniters spark but nothing lights (forces an autostart abort/retry). */
+  igniterFailure: boolean;
   instruments: Instruments;
 
   // View / UI toggles
@@ -125,6 +138,7 @@ export interface SimStore {
   setFuelControl: (p: FuelControlPos) => void;
   setAutostart: (on: boolean) => void;
   setApuRunning: (on: boolean) => void;
+  setIgniterFailure: (on: boolean) => void;
 
   tick: (dt: number) => void;
 
@@ -132,6 +146,10 @@ export interface SimStore {
   setExhaustStyle: (s: ExhaustStyle) => void;
   setCameraMode: (m: CameraMode) => void;
   setCameraPreset: (p: CameraPreset) => void;
+  /** Place the camera at a preset INSTANTLY (capture/scripting affordance). */
+  snapCamera: (p: CameraPreset) => void;
+  /** Place the camera at an arbitrary pose INSTANTLY (capture scripting). */
+  poseCamera: (pose: CameraPose) => void;
   focusOn: (point: [number, number, number]) => void;
   resetCamera: () => void;
   togglePaused: () => void;
@@ -196,6 +214,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
   autostart: true,
   apuRunning: false,
   apuBleedPsi: 0,
+  igniterFailure: false,
   instruments: buildInstruments(config, initialSpool, initialEngine, initialSeq),
 
   viewMode: 'cutaway',
@@ -232,6 +251,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
   setFuelControl: (p) => set({ fuelControl: p }),
   setAutostart: (on) => set({ autostart: on }),
   setApuRunning: (on) => set({ apuRunning: on }),
+  setIgniterFailure: (on) => set({ igniterFailure: on }),
 
   tick: (dt) => {
     const state = get();
@@ -288,6 +308,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
       fuelControl: state.fuelControl,
       autostart: state.autostart,
       bleedPsi: apuBleedPsi,
+      igniterFailure: state.igniterFailure,
     };
     const { seq: nextSeq, spool: nextSpool } = advanceStartSequence(
       seq,
@@ -319,6 +340,21 @@ export const useSimStore = create<SimStore>((set, get) => ({
   setCameraPreset: (p) =>
     set((s) => ({
       cameraCommand: { kind: 'preset', preset: p, focusPoint: null, nonce: s.cameraCommand.nonce + 1 },
+    })),
+  snapCamera: (p) =>
+    set((s) => ({
+      cameraCommand: { kind: 'preset', preset: p, focusPoint: null, instant: true, nonce: s.cameraCommand.nonce + 1 },
+    })),
+  poseCamera: (pose) =>
+    set((s) => ({
+      cameraCommand: {
+        kind: 'pose',
+        preset: s.cameraCommand.preset,
+        focusPoint: null,
+        pose,
+        instant: true,
+        nonce: s.cameraCommand.nonce + 1,
+      },
     })),
   focusOn: (point) =>
     set((s) => ({

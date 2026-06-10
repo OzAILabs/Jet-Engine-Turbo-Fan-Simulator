@@ -5,14 +5,15 @@
  * spool dynamics each frame (frame-rate independent, clamped dt), and every
  * rotating component reads the resulting angle from the store.
  */
-import { Suspense } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
+import { Suspense, useEffect } from 'react';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useSimStore } from '../store/useSimStore';
 import { CameraRig } from './CameraRig';
 import { Lighting } from './Lighting';
 import { EngineModel3D } from './EngineModel3D';
 import { RealisticEnvironment } from './RealisticEnvironment';
+import { applyScenario, installSimBridge } from '../util/simBridge';
 
 /** Advances spool inertia once per frame. */
 function PhysicsTicker() {
@@ -21,12 +22,45 @@ function PhysicsTicker() {
   return null;
 }
 
+/**
+ * CaptureBridge — wires window.__sim.capture() to the live GL canvas.
+ * One call = scenario + camera snap + a few settle frames + PNG data URL.
+ * Requires preserveDrawingBuffer on the renderer (set in the Canvas gl props).
+ */
+function CaptureBridge() {
+  const gl = useThree((s) => s.gl);
+  useEffect(() => {
+    const bridge = installSimBridge();
+    bridge.capture = async (opts = {}) => {
+      if (opts.scenario) applyScenario(opts.scenario);
+      if (opts.preset) useSimStore.getState().snapCamera(opts.preset);
+      // Let the render loop draw a few frames so physics/animations settle.
+      await new Promise<void>((resolve) => {
+        let frames = 0;
+        const wait = () => (++frames >= 4 ? resolve() : requestAnimationFrame(wait));
+        requestAnimationFrame(wait);
+      });
+      return gl.domElement.toDataURL('image/png');
+    };
+    return () => {
+      if (window.__sim) window.__sim.capture = undefined;
+    };
+  }, [gl]);
+  return null;
+}
+
 export function EngineScene() {
   return (
     <Canvas
       dpr={[1, 2]}
       shadows="soft"
-      gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 0.96 }}
+      gl={{
+        antialias: true,
+        toneMapping: THREE.ACESFilmicToneMapping,
+        toneMappingExposure: 0.96,
+        // Keeps the back buffer readable so __sim.capture() can toDataURL().
+        preserveDrawingBuffer: true,
+      }}
       frameloop="always"
     >
       <color attach="background" args={['#0a0d12']} />
@@ -51,6 +85,7 @@ export function EngineScene() {
       </Suspense>
 
       <PhysicsTicker />
+      <CaptureBridge />
     </Canvas>
   );
 }

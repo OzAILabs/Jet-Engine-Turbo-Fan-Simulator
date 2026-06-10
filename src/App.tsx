@@ -9,6 +9,7 @@ import { ChartsPanel } from './components/ChartsPanel';
 import { WarningPanel } from './components/WarningPanel';
 import { CameraControlsPanel } from './components/CameraControlsPanel';
 import { EngineAudio } from './components/EngineAudio';
+import { StartPanel } from './components/StartPanel';
 import { DISCLAIMER } from './data/educationalCopy';
 
 export default function App() {
@@ -37,6 +38,8 @@ export default function App() {
           <ReadoutPanel />
           <ChartsPanel />
         </div>
+
+        <StartPanel />
 
         <footer className="disclaimer">{DISCLAIMER}</footer>
       </div>

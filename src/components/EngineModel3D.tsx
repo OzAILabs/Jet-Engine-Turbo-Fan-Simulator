@@ -28,6 +28,11 @@ import { ExhaustPlume } from './ExhaustPlume';
 import { StationMarkers } from './StationMarkers';
 import { SectionLabels } from './SectionLabel';
 import { VelocityVectors } from './VelocityVectors';
+import { AccessoryGearbox } from './externals/AccessoryGearbox';
+import { FuelIgnitionSystem } from './externals/FuelIgnitionSystem';
+import { CompressorBleedSystems } from './externals/CompressorBleedSystems';
+import { CaseDetail } from './externals/CaseDetail';
+import { HarnessAndSensors } from './externals/HarnessAndSensors';
 
 /** Axial center of each major module, used to spread them in exploded view. */
 const MODULE_CENTERS = {
@@ -54,8 +59,13 @@ export function EngineModel3D() {
     });
   }, [exploded]);
 
+  // The externals layer manages its own shadow flags (hundreds of greebles
+  // opt out of shadow casting for performance) — keep it OUTSIDE the blanket
+  // shadow traverse above by mounting it in a sibling group.
+
   return (
-    <group ref={root}>
+    <>
+      <group ref={root}>
       {/* Two-spool shafts run the length of the engine; hide them when the
           modules are pulled apart so they don't dangle in the gaps. */}
       {!exploded && <Shafts />}
@@ -100,5 +110,18 @@ export function EngineModel3D() {
 
       {debugMode && <axesHelper args={[3]} />}
     </group>
+
+      {/* External hardware — accessory drive, fuel/ignition plumbing, variable
+          geometry, fasteners, wiring. Sibling of the shadow-traversed root so
+          each greeble keeps its own castShadow=false; every component handles
+          the four view modes itself (and returns null when exploded). */}
+      <group>
+        <AccessoryGearbox />
+        <FuelIgnitionSystem />
+        <CompressorBleedSystems />
+        <CaseDetail />
+        <HarnessAndSensors />
+      </group>
+    </>
   );
 }

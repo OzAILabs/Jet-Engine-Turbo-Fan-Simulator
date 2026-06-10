@@ -1,39 +1,42 @@
 /**
- * ExhaustVolumetric — the "Realistic" exhaust: a very subtle, mostly-translucent
- * warm jet (a hint of hot gas streaming aft, NOT a flame). Two additive
- * THREE.Points layers (a hotter core and a cooler bypass) are advected
- * downstream with sum-of-sines turbulence and a per-point motion-blur streak
- * (PointsMaterial.onBeforeCompile). Color grades warm — orange → deep red,
- * fading out via brightness (never through the blue/green part of the general
- * temperature scale). Everything scales with thrust/velocity and fades to
- * nothing when the engine is shut down.
+ * ExhaustVolumetric — the "Realistic" exhaust. A ~900 K core jet does NOT glow
+ * orange in daylight: what you actually see behind a big turbofan is a faint
+ * neutral haze of combustion products and heat-sheared air. Two CPU-advected
+ * THREE.Points streams (narrow hot core jet + wide bypass annulus) render as
+ * round, normal-blended gas parcels whose opacity follows optical depth —
+ * densest on the core axis just aft of the nozzle, thinning with radius and
+ * downstream phase — with at most a whisper of warm tint near the nozzle at
+ * high EGT. No additive glow, no streak capsules.
+ *
+ * All drive comes from plumeDrive() (exhaustConstants.ts): no flame = no
+ * plume (off / dry motoring renders NOTHING), a wispy shimmer at idle, a long
+ * turbulent column at takeoff — plus the brief dark smoke puff a real GE90
+ * shows at the core nozzle on light-off.
  */
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useSimStore } from '../store/useSimStore';
 import { AXIS } from '../data/engineLayout';
 import { clamp } from '../sim/units';
+import { plumeDrive, CORE_VEL_REF, BYPASS_VEL_REF } from './exhaustConstants';
 
 const CORE_START = AXIS.coreNozzleExit; // ~3.05
 const BYPASS_START = AXIS.bypassNozzleExit; // ~2.55
 
 /** Real jet velocity [m/s] -> on-screen phase advance (sceneSpeed ~= jetVel * PHASE_K). */
 const PHASE_K = 0.016;
-const CORE_VEL_REF = 620; // m/s near takeoff
-const BYPASS_VEL_REF = 300; // m/s near takeoff
-const THRUST_REF = 420000; // N — full-power normalization
+/** Advection floor [m/s] so the light-off puff still drifts aft at sub-idle. */
+const MIN_ADVECT_VEL = 40;
 
 const CORE_COUNT = 2600;
 const BYPASS_COUNT = 1200;
 
-// Warm exhaust gradients — kept strictly in the incandescent orange→red range so
-// cooling gas never turns green/blue. The tail disappears via brightness, not hue.
-const CORE_HOT = new THREE.Color(1.0, 0.58, 0.26); // dull cherry/orange (EGT glow)
-const CORE_COOL = new THREE.Color(0.38, 0.07, 0.02); // deep red-brown tail
-const CORE_HEAD = new THREE.Color(1.0, 0.86, 0.62); // brighter near-nozzle head
-const BYPASS_HOT = new THREE.Color(0.5, 0.54, 0.6); // faint neutral warm-grey air
-const BYPASS_COOL = new THREE.Color(0.14, 0.16, 0.2);
+// Near-neutral gas tints (NormalBlending) — the plume reads through OPACITY
+// over whatever sits behind it, never through additive fire colors.
+const CORE_GRAY = new THREE.Color(0.6, 0.6, 0.61);
+const CORE_WARM = new THREE.Color(0.78, 0.65, 0.48); // faint near-nozzle warmth at high EGT
+const SMOKE = new THREE.Color(0.21, 0.2, 0.19); // light-off soot puff
+const BYPASS_GRAY = new THREE.Color(0.66, 0.68, 0.71); // cooler shear-layer haze
 
 interface JetSpec {
   count: number;
@@ -42,14 +45,14 @@ interface JetSpec {
   spread: number;
   length: number;
   turb: number;
-  speedMul: number;
 }
 
 interface JetBuffers extends JetSpec {
   geom: THREE.BufferGeometry;
   positions: Float32Array;
   colors: Float32Array;
-  pointSpeed: Float32Array;
+  alphas: Float32Array;
+  scales: Float32Array;
   phase: Float32Array;
   ang: Float32Array;
   rseed: Float32Array;
@@ -62,7 +65,8 @@ function buildJet(spec: JetSpec): JetBuffers {
   const { count } = spec;
   const positions = new Float32Array(count * 3);
   const colors = new Float32Array(count * 3);
-  const pointSpeed = new Float32Array(count);
+  const alphas = new Float32Array(count);
+  const scales = new Float32Array(count);
   const phase = new Float32Array(count);
   const ang = new Float32Array(count);
   const rseed = new Float32Array(count);
@@ -72,109 +76,109 @@ function buildJet(spec: JetSpec): JetBuffers {
   for (let i = 0; i < count; i++) {
     phase[i] = Math.random();
     ang[i] = Math.random() * Math.PI * 2;
-    // Bias toward the centerline so the jet has a dense core and a wispy skirt.
+    // Bias toward the centerline so the optical column is dense with a wispy skirt.
     rseed[i] = Math.sqrt(Math.random()) * (0.55 + 0.45 * Math.random());
     noiseA[i] = Math.random() * Math.PI * 2;
     noiseB[i] = Math.random() * Math.PI * 2;
     rate[i] = 0.7 + Math.random() * 0.6;
+    scales[i] = 1;
   }
   const geom = new THREE.BufferGeometry();
   geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  geom.setAttribute('aSpeed', new THREE.BufferAttribute(pointSpeed, 1));
-  return { ...spec, geom, positions, colors, pointSpeed, phase, ang, rseed, noiseA, noiseB, rate };
-}
-
-/** A live-shader handle parked on a material's userData by onBeforeCompile. */
-interface StreakUserData {
-  shader?: THREE.WebGLProgramParametersWithUniforms;
+  geom.setAttribute('aAlpha', new THREE.BufferAttribute(alphas, 1));
+  geom.setAttribute('aScale', new THREE.BufferAttribute(scales, 1));
+  return { ...spec, geom, positions, colors, alphas, scales, phase, ang, rseed, noiseA, noiseB, rate };
 }
 
 /**
- * A PointsMaterial that stretches each point along +X by a per-point speed
- * attribute, scaled by a live uniform — the motion-blur cue (faster ⇒ longer).
+ * PointsMaterial extended with per-particle alpha + size attributes and a
+ * round gaussian falloff — soft spherical gas parcels. (The old capsule
+ * streaks stretched across the flow direction and oversold velocity; round
+ * sprites are the honest primitive for a subsonic-looking haze.)
  */
-function makeStreakMaterial(baseSize: number): THREE.PointsMaterial {
+function makeHazeMaterial(baseSize: number): THREE.PointsMaterial {
   const mat = new THREE.PointsMaterial({
     size: baseSize,
     vertexColors: true,
     transparent: true,
     depthWrite: false,
-    blending: THREE.AdditiveBlending,
+    blending: THREE.NormalBlending,
     sizeAttenuation: true,
   });
   mat.onBeforeCompile = (shader) => {
-    shader.uniforms.uStreak = { value: 1.0 };
     shader.vertexShader =
-      'attribute float aSpeed;\nuniform float uStreak;\nvarying float vStreak;\n' + shader.vertexShader;
+      'attribute float aAlpha;\nattribute float aScale;\nvarying float vAlpha;\n' + shader.vertexShader;
+    // gl_PointSize is assigned AFTER #include <project_vertex>, so hook the
+    // assignment itself rather than the include.
     shader.vertexShader = shader.vertexShader.replace(
-      '#include <project_vertex>',
-      [
-        '#include <project_vertex>',
-        'float streak = 1.0 + aSpeed * uStreak;',
-        'vStreak = streak;',
-        'gl_PointSize *= (1.0 + 0.85 * (streak - 1.0));',
-      ].join('\n'),
+      'gl_PointSize = size;',
+      'gl_PointSize = size * aScale;\nvAlpha = aAlpha;',
     );
-    shader.fragmentShader = 'varying float vStreak;\n' + shader.fragmentShader;
+    shader.fragmentShader = 'varying float vAlpha;\n' + shader.fragmentShader;
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <premultiplied_alpha_fragment>',
       [
-        'vec2 pc = gl_PointCoord - vec2(0.5);',
-        'float sx = pc.x / (0.5 * vStreak);',
-        'float sy = pc.y / 0.5;',
-        'float d = sqrt(sx * sx + sy * sy);',
-        'float capsule = smoothstep(1.0, 0.15, d);',
-        'float head = smoothstep(0.0, 1.0, 0.5 - pc.x);',
-        'gl_FragColor.a *= capsule * (0.55 + 0.65 * head);',
+        '// Round soft-edged gas parcel: gaussian core, clean zero at the rim.',
+        'vec2 pcc = gl_PointCoord - vec2(0.5);',
+        'float rr = length(pcc) * 2.0;',
+        'float soft = exp(-rr * rr * 2.8) * (1.0 - smoothstep(0.75, 1.0, rr));',
+        'gl_FragColor.a *= soft * vAlpha;',
+        'if (gl_FragColor.a < 0.002) discard;',
         '#include <premultiplied_alpha_fragment>',
       ].join('\n'),
     );
-    (mat.userData as StreakUserData).shader = shader;
   };
   return mat;
 }
 
+/** Per-frame, per-stream drive values handed to the advection loop. */
+interface JetFrame {
+  phaseRate: number;
+  /** Jet velocity / takeoff reference. */
+  velN: number;
+  baseColor: THREE.Color;
+  /** EGT tint target (core stream only). */
+  warmColor: THREE.Color | null;
+  egtN: number;
+  /** Stream-level peak opacity. */
+  alphaBudget: number;
+  /** runFactor × thrust shaping — the engine-state density gate. */
+  gate: number;
+  /** Light-off smoke envelope (core stream only). */
+  puff: number;
+}
+
 export function ExhaustVolumetric() {
+  const groupRef = useRef<THREE.Group>(null);
   const core = useMemo(
-    () => buildJet({ count: CORE_COUNT, start: CORE_START, baseRadius: 0.3, spread: 1.7, length: 6.0, turb: 0.22, speedMul: 1.15 }),
+    () => buildJet({ count: CORE_COUNT, start: CORE_START, baseRadius: 0.3, spread: 1.7, length: 6.0, turb: 0.22 }),
     [],
   );
   const bypass = useMemo(
-    () => buildJet({ count: BYPASS_COUNT, start: BYPASS_START, baseRadius: 0.85, spread: 1.35, length: 4.4, turb: 0.34, speedMul: 0.62 }),
+    () => buildJet({ count: BYPASS_COUNT, start: BYPASS_START, baseRadius: 0.85, spread: 1.35, length: 4.4, turb: 0.34 }),
     [],
   );
 
-  const coreMat = useMemo(() => makeStreakMaterial(0.26), []);
-  const bypassMat = useMemo(() => makeStreakMaterial(0.34), []);
+  const coreMat = useMemo(() => makeHazeMaterial(0.3), []);
+  const bypassMat = useMemo(() => makeHazeMaterial(0.42), []);
   const tmpColor = useMemo(() => new THREE.Color(), []);
 
-  const advanceJet = (
-    jet: JetBuffers,
-    dt: number,
-    t: number,
-    phaseRate: number,
-    velNorm: number,
-    hotColor: THREE.Color,
-    coolColor: THREE.Color,
-    headHeat: number,
-    brightMul: number,
-    vis: number,
-  ) => {
-    const { count, positions, colors, pointSpeed, phase, ang, rseed, noiseA, noiseB, rate } = jet;
-    const lenScale = clamp(0.45 + velNorm * 0.9, 0.45, 1.6);
+  const advanceJet = (jet: JetBuffers, dt: number, t: number, f: JetFrame) => {
+    const { count, positions, colors, alphas, scales, phase, ang, rseed, noiseA, noiseB, rate } = jet;
+    const lenScale = clamp(0.45 + f.velN * 0.9, 0.45, 1.6); // idle: stubby wisp; takeoff: long jet
     const length = jet.length * lenScale;
-    const radGrow = jet.spread * (0.8 + 0.4 * velNorm);
-    const turbAmp = jet.turb * (0.7 + 0.6 * velNorm);
+    const radGrow = jet.spread * (0.8 + 0.4 * f.velN);
+    const turbAmp = jet.turb * (0.6 + 0.8 * f.velN);
 
     for (let i = 0; i < count; i++) {
-      let p = phase[i] + phaseRate * rate[i] * dt;
+      let p = phase[i] + f.phaseRate * rate[i] * dt;
       p -= Math.floor(p);
       phase[i] = p;
 
       const x = jet.start + p * length;
       const r = jet.baseRadius * rseed[i] * (0.4 + p * radGrow);
-      const a = ang[i] + p * 1.6 + t * 0.4; // gentle swirl
+      const a = ang[i] + p * 1.6 + t * 0.4; // gentle bulk swirl
       const tb = turbAmp * (0.2 + p);
       const ty = tb * (Math.sin(noiseA[i] + p * 9.0 + t * 2.6) + 0.5 * Math.sin(noiseB[i] * 1.7 + p * 17.0 + t * 4.1));
       const tz = tb * (Math.cos(noiseB[i] + p * 8.0 + t * 2.2) + 0.5 * Math.cos(noiseA[i] * 1.3 + p * 15.0 + t * 3.4));
@@ -183,53 +187,95 @@ export function ExhaustVolumetric() {
       positions[i * 3 + 1] = Math.sin(a) * r + ty;
       positions[i * 3 + 2] = Math.cos(a) * r + tz;
 
-      pointSpeed[i] = velNorm * (1.0 - 0.6 * p);
+      // Recycle-pop fix: fade in across the first 5% of phase, and reach
+      // EXACTLY zero at phase 1.0 via the (1 - p) factor.
+      const fi = clamp(p / 0.05, 0, 1);
+      const fadeIn = fi * fi * (3 - 2 * fi);
+      const env = fadeIn * (1 - p);
 
-      // Warm gradient (orange → deep red); fade via brightness, never hue.
-      tmpColor.copy(hotColor).lerp(coolColor, Math.pow(p, 0.7));
-      const headBoost = headHeat * (1.0 - p) * (1.0 - p);
-      if (headBoost > 0.001) tmpColor.lerp(CORE_HEAD, clamp(headBoost * (0.4 + velNorm * 0.5), 0, 0.85));
-      const bright = vis * brightMul * (0.16 + 0.84 * (1.0 - p)) * (0.5 + 0.6 * velNorm);
-      colors[i * 3] = tmpColor.r * bright;
-      colors[i * 3 + 1] = tmpColor.g * bright;
-      colors[i * 3 + 2] = tmpColor.b * bright;
+      // Optical depth: parcels near the axis (small rseed) sit inside a
+      // thicker gas column; everything thins as the plume mixes downstream.
+      const depth = (1 - 0.55 * rseed[i]) * (1 - 0.45 * p);
+      let alpha = f.alphaBudget * env * depth * f.gate;
+
+      // Near-neutral haze; only a faint warm cast survives right at the
+      // nozzle at high EGT — a ~900 K jet does not glow orange in daylight.
+      tmpColor.copy(f.baseColor);
+      if (f.warmColor) {
+        const warmth = f.egtN * (1 - p) * (1 - p) * 0.45;
+        if (warmth > 0.004) tmpColor.lerp(f.warmColor, clamp(warmth, 0, 0.5));
+      }
+
+      // Parcels expand as the jet entrains ambient air.
+      let scale = 0.75 + 0.7 * p + 0.3 * f.velN;
+
+      // Light-off puff: parcels just aft of the core nozzle darken to soot,
+      // thicken and briefly swell, then the envelope decays over ~2 s.
+      if (f.puff > 0.002 && p < 0.35) {
+        const s = f.puff * (1 - p / 0.35);
+        tmpColor.lerp(SMOKE, s * 0.85);
+        alpha += s * 0.3 * fadeIn;
+        scale *= 1 + s * 0.9;
+      }
+
+      colors[i * 3] = tmpColor.r;
+      colors[i * 3 + 1] = tmpColor.g;
+      colors[i * 3 + 2] = tmpColor.b;
+      alphas[i] = clamp(alpha, 0, 0.85);
+      scales[i] = scale;
     }
     jet.geom.attributes.position.needsUpdate = true;
     jet.geom.attributes.color.needsUpdate = true;
-    jet.geom.attributes.aSpeed.needsUpdate = true;
+    jet.geom.attributes.aAlpha.needsUpdate = true;
+    jet.geom.attributes.aScale.needsUpdate = true;
   };
 
   useFrame((state, delta) => {
     const dt = Math.min(delta, 0.05);
     const t = state.clock.elapsedTime;
-    const { engine, spool } = useSimStore.getState();
+    const drive = plumeDrive();
 
-    const run = clamp(spool.n1, 0, 1);
-    const thrustFrac = clamp(engine.netThrust / THRUST_REF, 0, 1);
-    const coreVel = engine.coreExhaustVelocity;
-    const bypassVel = engine.bypassExhaustVelocity;
-    const vis = clamp(Math.min(run * 1.4, 0.2 + thrustFrac * 1.2), 0, 1) * run;
+    // Engine-state master gate: no flame = no plume at all (and no CPU work).
+    const visible = drive.runFactor > 0.002;
+    if (groupRef.current) groupRef.current.visible = visible;
+    if (!visible) return;
 
-    const coreVelNorm = clamp(coreVel / CORE_VEL_REF, 0, 1.35);
-    const bypassVelNorm = clamp(bypassVel / BYPASS_VEL_REF, 0, 1.35);
-    const corePhaseRate = (coreVel * PHASE_K * core.speedMul) / core.length;
-    const bypassPhaseRate = (bypassVel * PHASE_K * bypass.speedMul) / bypass.length;
+    // Physical jet velocities back out of the normalized drive; the floor
+    // keeps the light-off puff drifting aft while the core barely pumps.
+    const coreVel = Math.max(drive.coreVelN * CORE_VEL_REF, MIN_ADVECT_VEL);
+    const bypassVel = Math.max(drive.bypassVelN * BYPASS_VEL_REF, MIN_ADVECT_VEL * 0.6);
 
-    const coreHeadHeat = clamp((engine.exhaustGasTemp - 650) / 700, 0, 1);
-    advanceJet(core, dt, t, corePhaseRate, coreVelNorm, CORE_HOT, CORE_COOL, coreHeadHeat, 0.7, vis);
-    advanceJet(bypass, dt, t, bypassPhaseRate, bypassVelNorm, BYPASS_HOT, BYPASS_COOL, 0, 0.38, vis * 0.6);
+    // Overall density: gated by run state, shaped by thrust — wispy shimmer
+    // at idle, dense turbulent column at takeoff.
+    const gate = drive.runFactor * (0.25 + 0.75 * drive.thrustFrac);
 
-    const coreShader = (coreMat.userData as StreakUserData).shader;
-    if (coreShader) coreShader.uniforms.uStreak.value = 1.6;
-    const bypassShader = (bypassMat.userData as StreakUserData).shader;
-    if (bypassShader) bypassShader.uniforms.uStreak.value = 1.2;
+    advanceJet(core, dt, t, {
+      phaseRate: (coreVel * PHASE_K * 1.15) / core.length, // core rushes slightly faster on screen
+      velN: drive.coreVelN,
+      baseColor: CORE_GRAY,
+      warmColor: CORE_WARM,
+      egtN: drive.egtN,
+      alphaBudget: 0.34,
+      gate,
+      puff: drive.startPuff,
+    });
+    advanceJet(bypass, dt, t, {
+      phaseRate: (bypassVel * PHASE_K * 0.62) / bypass.length,
+      velN: drive.bypassVelN,
+      baseColor: BYPASS_GRAY,
+      warmColor: null,
+      egtN: 0,
+      alphaBudget: 0.16,
+      gate,
+      puff: 0,
+    });
   });
 
   return (
-    <group>
-      {/* Wider, cooler bypass jet (drawn first so the hot core overlays it). */}
+    <group ref={groupRef}>
+      {/* Wide, cool bypass haze (drawn first so the denser core column reads on top). */}
       <points geometry={bypass.geom} material={bypassMat} frustumCulled={false} />
-      {/* Hot, fast, turbulent core jet with motion-blur streaks. */}
+      {/* Core gas column: densest on-axis, neutral gray, faint warmth at high EGT. */}
       <points geometry={core.geom} material={coreMat} frustumCulled={false} />
     </group>
   );

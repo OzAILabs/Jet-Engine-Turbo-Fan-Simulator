@@ -2,7 +2,8 @@
  * Shafts.tsx
  *
  * The two concentric drive shafts that connect the rotating sections of the
- * engine. A turbofan like the GE90 runs on TWO independent spools:
+ * engine, plus the three STATIC bearing-support frames that hold them. A
+ * turbofan like the GE90 runs on TWO independent spools:
  *
  *   - LP (low-pressure) spool: the long, thin INNER shaft. It ties the fan and
  *     LP turbine together so the big fan up front is driven by the cool, slow
@@ -11,27 +12,68 @@
  *     LP shaft. It ties the HP compressor to the HP turbine right around the
  *     combustor, spinning much faster.
  *
+ * Shafts can't float in mid-air: the real engine carries them on bearings in
+ * three structural frames — the FAN FRAME behind the fan (its struts continue
+ * outward as the bypass fan-frame struts), a MID FRAME at the compressor rear
+ * / combustor diffuser, and the TURBINE REAR FRAME behind the last LPT stage.
+ * Each frame here is a spoked hub: 6 radial spokes + a steel hub ring, with a
+ * small bright ring where a shaft passes through — the bearing.
+ *
  * Because one shaft literally runs THROUGH the other, you can only appreciate
  * them with the casing peeled away, so we only show the shafts when the view is
- * NOT the solid "full" mode.
+ * NOT the solid "full" mode. The support frames are case-to-shaft structure, so
+ * they appear only in 'transparent' and 'cutaway' (in 'exploded' the cases they
+ * tie into have pulled away, and they'd float meaninglessly).
  *
  * Performance pattern: we never subscribe to the live spool angle reactively.
  * Instead each shaft's parent <group> has its rotation.x assigned every frame
  * from useSimStore.getState() inside useFrame (one cheap matrix update). Only
  * the viewMode (which changes rarely) is read reactively to toggle visibility.
+ * The frames cost 3 draw calls total: ONE InstancedMesh for all 18 spokes, ONE
+ * merged mesh for the 3 hub rings, ONE merged mesh for the 4 bearing rings.
  */
-import { useMemo, useRef } from 'react';
+import { useLayoutEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { useSimStore } from '../store/useSimStore';
 import { AXIS } from '../data/engineLayout';
 import { createTube } from '../geometry/annularSection';
+
+/** The three bearing-support frames (axial station, spoke reach, ring sizes). */
+interface FrameSpec {
+  /** Axial station of the frame [m]. */
+  x: number;
+  /** Radial reach of the spokes [m]. */
+  rOut: number;
+  /** Radius of the steel hub ring the spokes radiate from [m]. */
+  hubR: number;
+  /** Radii of the bright bearing rings — one per shaft passing this hub [m]. */
+  bearingR: number[];
+}
+
+const FRAMES: FrameSpec[] = [
+  // Fan frame: inboard continuation of the bypass fan-frame struts (their
+  // roots sit at r≈0.68 at this same x). Carries the LP-shaft front bearing.
+  { x: -2.0, rOut: 0.65, hubR: 0.2, bearingR: [0.15] },
+  // Mid frame at the HPC exit / diffuser: HP-shaft rear bearing, plus the
+  // intershaft bearing on the LP shaft running through inside it.
+  { x: 0.05, rOut: 0.4, hubR: 0.3, bearingR: [0.25, 0.15] },
+  // Turbine rear frame, just aft of the last LPT stage: LP-shaft rear bearing.
+  { x: 2.32, rOut: 0.85, hubR: 0.2, bearingR: [0.15] },
+];
+
+const SPOKES_PER_FRAME = 6;
+
+const dummy = new THREE.Object3D();
 
 export function Shafts() {
   // Only meaningful once the casing is see-through; rarely changes, so this is
   // the one value we read reactively.
   const viewMode = useSimStore((s) => s.viewMode);
   const visible = viewMode !== 'full';
+  // Frames tie shaft to case: shown only while the case is in place but see-through.
+  const showFrames = viewMode === 'transparent' || viewMode === 'cutaway';
 
   const lpGroup = useRef<THREE.Group>(null!);
   const hpGroup = useRef<THREE.Group>(null!);
@@ -70,6 +112,72 @@ export function Shafts() {
     [],
   );
 
+  // --- Bearing-frame geometry ----------------------------------------------
+  // Spoke master: a slightly tapered strut spanning y ∈ [0, 1] so a per-instance
+  // Y-scale stretches it from the hub out to each frame's reach.
+  const spokeGeo = useMemo(() => {
+    const g = new THREE.CylinderGeometry(0.022, 0.034, 1, 8);
+    g.translate(0, 0.5, 0);
+    return g;
+  }, []);
+
+  // 3 steel hub rings, merged into one geometry (one draw call).
+  const hubRingGeo = useMemo(() => {
+    const parts = FRAMES.map((f) => {
+      const t = new THREE.TorusGeometry(f.hubR, 0.028, 10, 48);
+      t.rotateY(Math.PI / 2); // ring into the Y–Z plane (axis along +X)
+      t.translate(f.x, 0, 0);
+      return t;
+    });
+    const merged = mergeGeometries(parts);
+    parts.forEach((p) => p.dispose());
+    return merged;
+  }, []);
+
+  // 4 bright bearing rings (one per shaft-through-hub), merged likewise.
+  const bearingGeo = useMemo(() => {
+    const parts = FRAMES.flatMap((f) =>
+      f.bearingR.map((r) => {
+        const t = new THREE.TorusGeometry(r, 0.02, 10, 40);
+        t.rotateY(Math.PI / 2);
+        t.translate(f.x, 0, 0);
+        return t;
+      }),
+    );
+    const merged = mergeGeometries(parts);
+    parts.forEach((p) => p.dispose());
+    return merged;
+  }, []);
+
+  // Structural steel for the frames; bright polished race for the bearings.
+  const frameMat = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: '#8a9099', metalness: 0.75, roughness: 0.45 }),
+    [],
+  );
+  const bearingMat = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: '#c9d2dc', metalness: 0.95, roughness: 0.2 }),
+    [],
+  );
+
+  // Lay out all 18 spokes once: 6 per frame, fanned about +X, each frame's set
+  // staggered a little so the three frames don't read as one aligned grille.
+  const spokesRef = useRef<THREE.InstancedMesh>(null!);
+  useLayoutEffect(() => {
+    const mesh = spokesRef.current;
+    if (!mesh) return; // not mounted in this view mode
+    let i = 0;
+    FRAMES.forEach((f, fi) => {
+      for (let k = 0; k < SPOKES_PER_FRAME; k++) {
+        dummy.position.set(f.x, 0, 0);
+        dummy.rotation.set((k * Math.PI * 2) / SPOKES_PER_FRAME + fi * (Math.PI / 6), 0, 0);
+        dummy.scale.set(1, f.rOut, 1);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i++, dummy.matrix);
+      }
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+  }, [showFrames]);
+
   // Drive both shafts from the live spool angles (non-reactive read).
   useFrame(() => {
     const { spool } = useSimStore.getState();
@@ -88,6 +196,20 @@ export function Shafts() {
       <group ref={hpGroup}>
         <mesh geometry={hpGeo} material={hpMat} position={[hpCenterX, 0, 0]} frustumCulled={false} />
       </group>
+
+      {/* Static bearing-support frames: spokes + hub rings + bearing rings. */}
+      {showFrames && (
+        <group>
+          <instancedMesh
+            ref={spokesRef}
+            args={[spokeGeo, frameMat, FRAMES.length * SPOKES_PER_FRAME]}
+            castShadow={false}
+            frustumCulled={false}
+          />
+          <mesh geometry={hubRingGeo} material={frameMat} castShadow={false} frustumCulled={false} />
+          <mesh geometry={bearingGeo} material={bearingMat} castShadow={false} frustumCulled={false} />
+        </group>
+      )}
     </group>
   );
 }

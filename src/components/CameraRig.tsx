@@ -41,7 +41,11 @@ export function CameraRig() {
     const { kind, preset, focusPoint } = cameraCommand;
     const def = CAMERA_PRESETS[preset];
 
-    if (kind === 'focus' && focusPoint) {
+    if (kind === 'pose' && cameraCommand.pose) {
+      goalPos.current.set(...cameraCommand.pose.position);
+      goalTarget.current.set(...cameraCommand.pose.target);
+      goalZoom.current = cameraCommand.pose.zoom;
+    } else if (kind === 'focus' && focusPoint) {
       // Keep the current viewing direction; reframe on the focused point.
       const cam = activeCamera();
       tmpDir.copy(cam.position).sub(controlsRef.current.target);
@@ -55,7 +59,20 @@ export function CameraRig() {
       goalTarget.current.set(...def.target);
       goalZoom.current = def.zoom;
     }
-    animating.current = true;
+    if (cameraCommand.instant) {
+      // Deterministic placement for scripted captures: no lerp, settled now.
+      const cam = activeCamera();
+      cam.position.copy(goalPos.current);
+      controlsRef.current.target.copy(goalTarget.current);
+      if (cam instanceof THREE.OrthographicCamera) {
+        cam.zoom = goalZoom.current;
+        cam.updateProjectionMatrix();
+      }
+      controlsRef.current.update();
+      animating.current = false;
+    } else {
+      animating.current = true;
+    }
     invalidate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cameraCommand.nonce, cameraMode]);

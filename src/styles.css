@@ -540,3 +540,263 @@ input.slider::-moz-range-thumb {
     width: 220px;
   }
 }
+
+/* ===========================================================================
+   Engine-start station — flip-out panel docked bottom-center.
+   =========================================================================== */
+.start-dock {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%) translateY(calc(100% - 0px));
+  transition: transform 0.45s cubic-bezier(0.2, 0.9, 0.25, 1);
+  pointer-events: auto;
+  z-index: 5;
+  perspective: 900px;
+}
+.start-dock.is-open {
+  transform: translateX(-50%) translateY(0);
+}
+
+.start-tab {
+  position: absolute;
+  top: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  color: var(--text);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 7px 18px;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+}
+.start-tab:hover { color: var(--accent); }
+.tab-state {
+  margin-left: 10px;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+}
+.tab-state.tab-running { color: var(--ok); }
+.tab-state.tab-motoring, .tab-state.tab-fuelOn, .tab-state.tab-lightoff, .tab-state.tab-accel { color: var(--warn); }
+.tab-state.tab-aborting { color: var(--crit); }
+
+.start-panel {
+  display: flex;
+  gap: 18px;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-bottom: none;
+  border-radius: var(--radius) var(--radius) 0 0;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(10px);
+  padding: 12px 18px 14px;
+  transform-origin: bottom center;
+}
+
+.sp-col { display: flex; flex-direction: column; gap: 7px; min-width: 150px; }
+.sp-section-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--panel-border);
+  padding-bottom: 3px;
+}
+.sp-fuel-title { margin-top: 8px; }
+
+/* Switches with annunciator lamps */
+.sp-switch {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(8, 11, 16, 0.7);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 6px 9px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+}
+.sp-switch:hover { border-color: var(--accent-dim); }
+.sp-lamp {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  padding: 2px 7px;
+  border-radius: 3px;
+  background: #1a1f27;
+  color: var(--muted);
+  border: 1px solid rgba(120, 150, 190, 0.12);
+}
+.sp-lamp.lamp-green { background: rgba(86, 201, 138, 0.16); color: var(--ok); border-color: rgba(86, 201, 138, 0.4); }
+.sp-lamp.lamp-amber { background: rgba(227, 179, 65, 0.14); color: var(--warn); border-color: rgba(227, 179, 65, 0.4); }
+
+.sp-readline {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10.5px;
+  color: var(--muted);
+  padding: 1px 2px;
+}
+.val-ok { color: var(--text); font-variant-numeric: tabular-nums; }
+.val-warn { color: var(--warn); font-variant-numeric: tabular-nums; }
+.val-dim { color: var(--muted); font-variant-numeric: tabular-nums; }
+.sp-failure { margin-top: auto; font-size: 10px; color: var(--muted); }
+
+/* Rotary START/IGNITION selector */
+.sp-rotary {
+  position: relative;
+  height: 96px;
+  display: grid;
+  place-items: center;
+}
+.sp-knob {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #3a414c, #161a20 70%);
+  border: 2px solid #2a313c;
+  transition: transform 0.25s ease;
+  position: relative;
+}
+.sp-knob-pointer {
+  position: absolute;
+  top: 3px;
+  left: 50%;
+  width: 4px;
+  height: 16px;
+  margin-left: -2px;
+  border-radius: 2px;
+  background: #d8e0ec;
+}
+.sp-rotary-pos {
+  position: absolute;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  cursor: pointer;
+  padding: 3px 5px;
+}
+.sp-rotary-pos:hover { color: var(--accent); }
+.sp-rotary-pos.is-active { color: var(--text); text-shadow: 0 0 8px rgba(95, 168, 255, 0.6); }
+.sp-rotary-pos:disabled { opacity: 0.4; cursor: default; }
+.pos-start { left: -4px; top: 12px; }
+.pos-norm { left: 50%; transform: translateX(-50%); top: -8px; }
+.pos-con { right: -2px; top: 12px; }
+
+/* Fuel control switch — guarded RUN/CUTOFF lever */
+.sp-fuelswitch {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: rgba(8, 11, 16, 0.7);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 6px;
+}
+.sp-fuel-pos {
+  background: #161a20;
+  border: 1px solid rgba(120, 150, 190, 0.15);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 6px 0;
+  cursor: pointer;
+}
+.sp-fuel-pos.is-run { background: rgba(86, 201, 138, 0.18); color: var(--ok); border-color: rgba(86, 201, 138, 0.45); }
+.sp-fuel-pos.is-cutoff { background: rgba(255, 93, 93, 0.14); color: var(--crit); border-color: rgba(255, 93, 93, 0.4); }
+.sp-colddark { margin-top: 8px; }
+
+/* EICAS gauges */
+.sp-eicas { min-width: 320px; }
+.sp-gauges { display: flex; gap: 8px; justify-content: space-between; }
+.eicas-dial { width: 96px; text-align: center; }
+.eicas-dial svg { width: 96px; height: 78px; overflow: visible; }
+.dial-arc { fill: none; stroke: #aab6c6; stroke-width: 2.4; }
+.dial-needle { stroke: #eef3fa; stroke-width: 3; stroke-linecap: round; }
+.dial-hub { fill: #eef3fa; }
+.dial-redline { stroke: var(--crit); stroke-width: 3; }
+.dial-startlimit { stroke: var(--crit); stroke-width: 2; stroke-dasharray: 3 2; }
+.dial-digits {
+  margin-top: -16px;
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #eef3fa;
+}
+.eicas-dial.is-exceed .dial-digits { color: var(--crit); }
+.dial-label { font-size: 9.5px; font-weight: 700; letter-spacing: 1px; color: var(--accent-2); }
+.dial-unit { color: var(--muted); font-weight: 500; }
+
+.sp-secondary { display: flex; gap: 14px; margin-top: 6px; justify-content: center; }
+.sp-secondary .sp-readline { flex-direction: column; align-items: center; gap: 1px; }
+
+.sp-status {
+  margin-top: 7px;
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1.1px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  background: rgba(8, 11, 16, 0.7);
+  border: 1px solid var(--panel-border);
+  color: var(--muted);
+}
+.sp-status.status-running { color: var(--ok); border-color: rgba(86, 201, 138, 0.35); }
+.sp-status.status-motoring, .sp-status.status-fuelOn, .sp-status.status-lightoff, .sp-status.status-accel {
+  color: var(--warn);
+  border-color: rgba(227, 179, 65, 0.3);
+}
+.sp-status.status-aborting { color: var(--crit); border-color: rgba(255, 93, 93, 0.4); }
+
+.sp-annunciator {
+  margin-top: 6px;
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  background: rgba(227, 179, 65, 0.12);
+  border: 1px solid rgba(227, 179, 65, 0.5);
+  color: var(--warn);
+  animation: annunciate 1.2s ease-in-out 3;
+}
+.sp-annunciator.is-red {
+  background: rgba(255, 93, 93, 0.12);
+  border-color: rgba(255, 93, 93, 0.55);
+  color: var(--crit);
+}
+@keyframes annunciate {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@media (max-width: 1100px) {
+  .start-panel { gap: 10px; padding: 10px; }
+  .sp-eicas { min-width: 260px; }
+  .eicas-dial { width: 80px; }
+  .eicas-dial svg { width: 80px; height: 66px; }
+}
+
+.field-hint {
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 2px;
+  font-style: italic;
+}
+.slider:disabled { opacity: 0.35; }

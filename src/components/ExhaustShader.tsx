@@ -3,20 +3,24 @@
  *
  * This REPLACES the old faint translucent cone. There is no static cone mesh
  * here: the plume is a single THREE.Points cloud driven entirely by one custom
- * THREE.ShaderMaterial (inline GLSL, additive, one draw call). Every particle
+ * THREE.ShaderMaterial (inline GLSL, normal-blended, one draw call). Every particle
  * is advected in the VERTEX shader from a uniform time plus per-particle
  * attributes (seed / phase / lane), recycled with fract(phase + time * speed),
  * displaced by smooth sum-of-sines turbulence so the shear layer billows, and
  * softened along the screen-projected flow direction to read as motion blur
  * without resolving into straight particle streaks.
  *
- * The FRAGMENT shader gives each particle a soft round/streaked falloff, an
- * The plume is intentionally neutral, translucent, and irregular: commercial
- * turbofan exhaust is mainly visible as heat-distorted air, not flame. Plume
- * length, density and distortion all scale with thrust, and the whole effect
- * fades to nothing when the engine is shut down.
+ * The FRAGMENT shader gives each particle a soft, flow-aligned falloff and
+ * refracts the previously-captured scene through it (true heat shimmer). The
+ * plume is intentionally neutral, translucent, and irregular: commercial
+ * turbofan exhaust is mainly visible as heat-distorted air, not flame. When
+ * the core nozzle CHOKES at high power, a damped periodic brightness train
+ * (~4 shock cells, fading downstream) appears along the core jet via uChoked.
  *
- * Live engine data is read non-reactively inside useFrame via getState() and
+ * Everything is HARD GATED on combustion through plumeDrive()
+ * (exhaustConstants.ts): an engine that is off or merely dry-motoring renders
+ * no plume at all — and skips the whole-scene FBO capture entirely. Live
+ * engine data is read non-reactively inside useFrame via getState() and
  * pushed into the material uniforms (mutated in place — never reallocated).
  */
 import { useMemo, useRef } from 'react';
@@ -26,7 +30,8 @@ import * as THREE from 'three';
 import { useSimStore } from '../store/useSimStore';
 import { AXIS } from '../data/engineLayout';
 import { clamp, lerp } from '../sim/units';
-import { temperatureColor, heatFraction } from '../util/colorScale';
+import { temperatureColor } from '../util/colorScale';
+import { plumeDrive } from './exhaustConstants';
 
 // --- Tunables -------------------------------------------------------------
 
@@ -54,10 +59,9 @@ const CORE_BASE_RADIUS = 0.3;
 const BYPASS_START = AXIS.bypassNozzleExit; // ~2.55
 const BYPASS_BASE_RADIUS = 0.85;
 
-// Reference values used to normalize the live data into 0..1 drive amounts.
-const CORE_VEL_REF = 640; // m/s, ~takeoff core jet
-const BYPASS_VEL_REF = 300; // m/s, ~takeoff bypass jet
-const THRUST_REF = 480000; // N, ~full takeoff thrust
+// Normalization references (rated thrust / takeoff jet velocities) and the
+// per-frame drive gate all live in exhaustConstants.ts, shared with the
+// "Realistic" ExhaustVolumetric renderer.
 
 // =========================================================================
 // GLSL
@@ -82,9 +86,8 @@ const VERT = /* glsl */ `
   uniform float uBypassSpeed;  // scene units/s for the bypass jet
   uniform float uCoreLen;      // core plume length (units)
   uniform float uBypassLen;    // bypass plume length (units)
-  uniform float uCoreVis;      // 0..1 core intensity (thrust/n1 gated)
+  uniform float uCoreVis;      // 0..1 core intensity (thrust/runFactor gated)
   uniform float uBypassVis;    // 0..1 bypass intensity
-  uniform float uChoked;       // 0..1+ shock-diamond strength
   uniform float uTurb;         // turbulence amplitude scale 0..1+
   uniform float uPixelRatio;   // device pixel ratio (point-size scaling)
   uniform float uHeat;         // 0..1 overall heat (drives incandescence)
@@ -145,8 +148,9 @@ const VERT = /* glsl */ `
 
     vec3 worldPos = vec3(x, y, z);
 
-    // Irregular pockets appear and disappear as they rush downstream. There
-    // are deliberately no axial bands or shock diamonds.
+    // Irregular pockets appear and disappear as they rush downstream. (Shock
+    // cells are NOT faked here — the fragment stage adds them, gated by the
+    // live choked-nozzle flag via uChoked.)
     float pocketA = wobble(aSeed * 41.3 + p * 19.0 - tx * 1.4,
                            aSeed * 13.7 - p * 31.0 + tx * 0.8,
                            aSeed * 67.1 + p * 7.0 - tx * 2.1);
@@ -156,9 +160,13 @@ const VERT = /* glsl */ `
     vNoise = smoothstep(-0.42, 0.58, pocketA * 0.65 + pocketB * 0.35);
 
     // Visible density is strongest in the shear layer and breaks apart aft.
+    // Recycle-pop fix: the envelope eases in over the first 5% of phase and is
+    // EXACTLY zero at phase 1.0 (the old 0.32 life floor made every respawn a
+    // visible pop at the nozzle).
+    float env = smoothstep(0.0, 0.05, p) * (1.0 - smoothstep(0.72, 1.0, p));
     float life = 1.0 - smoothstep(0.18, 1.0, p);
     float shear = smoothstep(baseR * 0.08, baseR * (0.9 + p), axisDist);
-    vBright = vis * (0.18 + 0.82 * vNoise) * (0.35 + 0.65 * shear) * (0.32 + 0.68 * life);
+    vBright = vis * (0.18 + 0.82 * vNoise) * (0.35 + 0.65 * shear) * env * (0.45 + 0.55 * life);
 
     // --- Projection + screen-space flow direction (for motion blur) -----
     vec4 mvPos = modelViewMatrix * vec4(worldPos, 1.0);
@@ -198,6 +206,7 @@ const FRAG = /* glsl */ `
   uniform vec3 uBypassHot;
   uniform vec3 uBypassCool;
   uniform float uOpacity;   // global fade (engine running state)
+  uniform float uChoked;    // 0..1 shock-cell strength (thrustFrac while choked)
   uniform sampler2D uSceneTexture;
   uniform vec2 uResolution;
   uniform float uDistort;
@@ -259,7 +268,17 @@ const FRAG = /* glsl */ `
     // A tiny neutral tint helps the distortion remain legible against a plain
     // background without turning the plume into a grey cloud.
     vec3 col = mix(refracted, hotCool, 0.12 + 0.1 * vNoise);
-    float alpha = mask * vBright * uOpacity * 0.52;
+
+    // Shock cells: a choked, underexpanded core nozzle sets up a standing
+    // expansion/compression train — ~4 cells brighten the first stretch of
+    // the core jet and damp out downstream as mixing destroys them. uChoked
+    // carries thrustFrac only while the nozzle is actually choked at high
+    // power, so the train appears/strengthens with the throttle.
+    float cell = max(sin(vT * 25.13), 0.0); // ~4 cycles across the plume
+    float shock = uChoked * vCore * cell * cell * exp(-vT * 3.0);
+    col *= 1.0 + shock * 0.6;
+
+    float alpha = mask * vBright * uOpacity * (0.52 + 0.3 * shock);
     gl_FragColor = vec4(col, alpha);
     if (gl_FragColor.a < 0.003) discard;
   }
@@ -322,12 +341,9 @@ export function ExhaustShader({ mode = 'flame' }: { mode?: 'flame' | 'haze' }) {
   }, []);
 
   // --- Uniforms: created once, mutated in place each frame -----------------
+  // The five tint colors start black and are written every frame from the
+  // mode palette + the live EGT-derived warm cast (see useFrame).
   const uniforms = useMemo(() => {
-    // Hot core colors come straight from the shared temperature scale so the
-    // plume agrees with the rest of the UI; pulled from temperatureColor().
-    const hot = temperatureColor(1450); // warm orange-white at the nozzle
-    const mid = temperatureColor(1080); // orange mid plume
-    const cool = temperatureColor(760); // deep red cooled tail
     return {
       uTime: { value: 0 },
       uCoreSpeed: { value: 0 },
@@ -345,24 +361,18 @@ export function ExhaustShader({ mode = 'flame' }: { mode?: 'flame' | 'haze' }) {
       uSceneTexture: { value: sceneTarget.texture },
       uResolution: { value: new THREE.Vector2(1, 1) },
       uDistort: { value: 0.002 },
-      uHotColor: { value: new THREE.Color(hot.r, hot.g, hot.b) },
-      uMidColor: { value: new THREE.Color(mid.r, mid.g, mid.b) },
-      uCoolColor: { value: new THREE.Color(cool.r, cool.g, cool.b) },
+      uHotColor: { value: new THREE.Color() },
+      uMidColor: { value: new THREE.Color() },
+      uCoolColor: { value: new THREE.Color() },
       uBypassHot: { value: new THREE.Color('#cfe0ee') },
       uBypassCool: { value: new THREE.Color('#243140') },
     };
   }, [sceneTarget.texture]);
 
-  // Two color palettes, built once. Flame = incandescent (from the heat scale);
-  // haze = desaturated warm-white (so the plume reads as hot translucent air,
-  // not a flame). Copied into the live uniforms each frame.
+  // Two NEUTRAL color palettes, built once. Both read as distorted air, not
+  // flame; the hot end leans toward the live temperature scale per frame,
+  // scaled by the actual EGT (see useFrame) — never a hardcoded fire color.
   const palettes = useMemo(() => {
-    const fh = new THREE.Color();
-    const fm = new THREE.Color();
-    const fc = new THREE.Color();
-    temperatureColor(1200, fh);
-    temperatureColor(980, fm);
-    temperatureColor(740, fc);
     return {
       flame: {
         hot: new THREE.Color('#d5d9d7'),
@@ -381,6 +391,9 @@ export function ExhaustShader({ mode = 'flame' }: { mode?: 'flame' | 'haze' }) {
     };
   }, []);
 
+  // Scratch color for the per-frame EGT tint (never reallocated).
+  const tint = useMemo(() => new THREE.Color(), []);
+
   useFrame((state, delta) => {
     const dt = Math.min(delta, 0.05);
     const mat = matRef.current;
@@ -388,62 +401,69 @@ export function ExhaustShader({ mode = 'flame' }: { mode?: 'flame' | 'haze' }) {
     const u = mat.uniforms;
     u.uTime.value += dt;
 
-    const { engine, spool } = useSimStore.getState();
+    const { engine } = useSimStore.getState();
     const haze = mode === 'haze';
 
-    // Overall running state: everything fades to nothing as the engine winds
-    // down (n1 -> 0 / netThrust -> 0).
-    const run = clamp(spool.n1, 0, 1);
-    const thrustFrac = clamp(engine.netThrust / THRUST_REF, 0, 1);
-    const lit = run > 0.02 ? 1 : 0;
+    // The shared engine-state drive: runFactor is 0 with no flame (off / dry
+    // motoring / post-cutoff), ramps in from light-off, and is 1 running.
+    const { runFactor, thrustFrac, coreVelN, bypassVelN, egtN } = plumeDrive();
+
+    // Master gate: no combustion = no plume AND no FBO capture below — an
+    // engine sitting cold on the stand costs literally nothing here.
+    const active = runFactor > 0.002;
+    if (pointsRef.current) pointsRef.current.visible = active;
+    if (!active) return;
 
     const coreVel = Math.max(engine.coreExhaustVelocity, 0);
     const bypassVel = Math.max(engine.bypassExhaustVelocity, 0);
 
     // Heat haze drifts/wobbles rather than streaking, so it advects gentler.
     const speedMul = haze ? 0.5 : 1.0;
-    u.uCoreSpeed.value = coreVel * K_SPEED * lit * speedMul;
-    u.uBypassSpeed.value = bypassVel * K_SPEED * lit * speedMul;
+    u.uCoreSpeed.value = coreVel * K_SPEED * speedMul;
+    u.uBypassSpeed.value = bypassVel * K_SPEED * speedMul;
 
-    const coreVelN = clamp(coreVel / CORE_VEL_REF, 0, 1.15);
-    const bypassVelN = clamp(bypassVel / BYPASS_VEL_REF, 0, 1.15);
-    u.uCoreLen.value = lerp(1.6, 5.4, coreVelN) * (0.6 + 0.4 * thrustFrac);
-    u.uBypassLen.value = lerp(1.2, 3.6, bypassVelN);
+    u.uCoreLen.value = lerp(1.6, 5.4, Math.min(coreVelN, 1.15)) * (0.6 + 0.4 * thrustFrac);
+    u.uBypassLen.value = lerp(1.2, 3.6, Math.min(bypassVelN, 1.15));
 
-    // Color palette (flame vs. desaturated haze).
+    // Color palette (flame vs. desaturated haze), plus a live heat cast: the
+    // near-nozzle tone leans toward the shared temperature scale evaluated at
+    // the CURRENT Tt5, scaled by the displayed-EGT fraction — so the tint
+    // follows the actual cycle instead of a hardcoded flame color.
     const pal = haze ? palettes.haze : palettes.flame;
-    u.uHotColor.value.copy(pal.hot);
-    u.uMidColor.value.copy(pal.mid);
+    temperatureColor(engine.exhaustGasTemp, tint);
+    u.uHotColor.value.copy(pal.hot).lerp(tint, 0.25 * egtN);
+    u.uMidColor.value.copy(pal.mid).lerp(tint, 0.12 * egtN);
     u.uCoolColor.value.copy(pal.cool);
     u.uBypassHot.value.copy(pal.bypHot);
     u.uBypassCool.value.copy(pal.bypCool);
 
     if (haze) {
       // Heat shimmer: a faint, translucent, turbulent blur — no flame, no
-      // diamonds. Kept very low so the many additive sprites read as wispy hot
-      // air rather than saturating into a white blob.
-      u.uCoreVis.value = clamp(0.12 + thrustFrac * 0.2, 0, 0.34) * run * lit;
-      u.uBypassVis.value = clamp(run, 0, 1) * 0.12 * lit;
+      // diamonds. Kept very low so the many sprites read as wispy hot air
+      // rather than saturating into a white blob.
+      u.uCoreVis.value = clamp(0.12 + thrustFrac * 0.2, 0, 0.34) * runFactor;
+      u.uBypassVis.value = 0.12 * runFactor;
       u.uChoked.value = 0;
-      u.uHeat.value = 0.18 * run; // low incandescence
+      u.uHeat.value = 0.25 * egtN * runFactor; // low incandescence
       u.uTurb.value = 1.7 + 0.8 * thrustFrac; // strong, wispy boil/shimmer
       u.uSizeBoost.value = 2.0; // soft sprites for a blurred look (not a blob)
     } else {
       // Dramatic commercial-jet plume: much denser and more active than the
       // Realistic option, but still translucent, neutral, and flame-free.
-      u.uCoreVis.value = clamp(0.42 + thrustFrac * 0.48, 0, 0.9) * run * lit;
-      u.uBypassVis.value = clamp(0.34 + run * 0.5, 0, 0.82) * lit;
-      u.uChoked.value = 0;
-      u.uHeat.value = heatFraction(lerp(620, 1250, thrustFrac)) * run;
+      u.uCoreVis.value = clamp(0.42 + thrustFrac * 0.48, 0, 0.9) * runFactor;
+      u.uBypassVis.value = clamp(0.34 + runFactor * 0.5, 0, 0.82) * runFactor;
+      // Shock cells exist only while the core nozzle is ACTUALLY choked at
+      // high power; strength follows the thrust fraction.
+      u.uChoked.value = engine.coreNozzleChoked && thrustFrac > 0.5 ? thrustFrac : 0;
+      u.uHeat.value = egtN * runFactor;
       u.uTurb.value = 1.15 + 1.25 * thrustFrac;
       u.uSizeBoost.value = 2.15;
     }
 
-    // Global fade. Squaring run via the product makes the spool-down tail die
-    // cleanly to nothing at shutdown.
-    u.uOpacity.value = clamp(Math.min(run * 1.3, 0.25 + thrustFrac) * run, 0, 1);
+    // Global fade: the engine-state gate, shaped by thrust.
+    u.uOpacity.value = runFactor * lerp(0.35, 1.0, thrustFrac);
     u.uResolution.value.set(size.width * pixelRatio, size.height * pixelRatio);
-    u.uDistort.value = haze ? 0 : (0.004 + thrustFrac * 0.012) * run;
+    u.uDistort.value = haze ? 0 : (0.004 + thrustFrac * 0.012) * runFactor;
 
     // Capture the scene without this plume. The regular canvas render that
     // follows draws the refractive particles over this clean background.

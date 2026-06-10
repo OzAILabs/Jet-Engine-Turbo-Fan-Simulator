@@ -53,6 +53,8 @@ export function ControlPanel() {
   const viewMode = useSimStore((s) => s.viewMode);
   const exhaustStyle = useSimStore((s) => s.exhaustStyle);
   const paused = useSimStore((s) => s.paused);
+  // Booleanized so this panel only re-renders when the running state flips.
+  const engineRunning = useSimStore((s) => s.startSeq.runState === 'running');
   const soundEnabled = useSimStore((s) => s.soundEnabled);
   const soundVolume = useSimStore((s) => s.soundVolume);
 
@@ -96,10 +98,11 @@ export function ControlPanel() {
       <div className="panel-section">
         <div className="panel-subtitle">Flight Condition</div>
 
-        {/* Throttle 0-100 % */}
+        {/* Throttle 0-100 % — idle→takeoff. Starting/stopping the engine is the
+            START panel's job (selector + fuel control), like the real airplane. */}
         <div className="field">
           <div className="field-head">
-            <span className="field-label">Throttle</span>
+            <span className="field-label">Throttle{engineRunning ? '' : ' (engine off)'}</span>
             <span className="field-value">{inputs.throttle.toFixed(0)} %</span>
           </div>
           <input
@@ -109,8 +112,12 @@ export function ControlPanel() {
             max={100}
             step={1}
             value={inputs.throttle}
+            disabled={!engineRunning}
             onChange={(e) => setThrottle(+e.target.value)}
           />
+          {!engineRunning && (
+            <div className="field-hint">Start the engine from the ENGINE START panel below.</div>
+          )}
         </div>
 
         {/* Altitude 0-40000 ft */}
