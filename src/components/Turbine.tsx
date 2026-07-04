@@ -4,12 +4,15 @@
  *
  * Physics-for-students notes:
  *   - The HPT is driven by the very hot gas leaving the combustor; it extracts
- *     work to spin the HP spool (which drives the HPC). It runs hottest, so we
- *     tint its emissive glow with the turbine-inlet temperature (Tt4).
+ *     work to spin the HP spool (which drives the HPC). It runs hottest — but
+ *     hot metal at NORMAL power does not glow: it wears permanent HEAT
+ *     STAINING (straw/bronze/violet tempering bands, baked into a procedural
+ *     texture). The emissive only wakes up when Tt4 exceeds the certified
+ *     redline — a visible glow through the gas path IS an over-temp event.
  *   - The LPT sits downstream, where the gas is cooler and lower-pressure. Its
  *     blades grow taller stage-by-stage to keep doing work on the expanding gas;
- *     it drives the LP spool (fan + booster). We tint it with the exhaust-gas
- *     temperature (EGT, Tt5), and keep its glow dimmer than the HPT.
+ *     it drives the LP spool (fan + booster). Its staining is subtler, and its
+ *     over-temp glow is judged against the certified EGT takeoff limit.
  *   - The drum REALLY rotates: it is split at AXIS.hptEnd into an HP-driven
  *     front section and an LP-driven rear section (the LPT drives the fan
  *     shaft), each in a group whose rotation.x is written every frame from the
@@ -21,8 +24,8 @@
  * their spool ('hp' or 'lp'); stators pass spin={null}.
  *
  * Performance: every blade row of a given module reuses ONE geometry + ONE
- * material, and the heat glow is animated by mutating the (single) HPT and LPT
- * materials inside useFrame -- never via React re-renders.
+ * material, and the over-temp glow is animated by mutating the (single) HPT and
+ * LPT materials inside useFrame -- never via React re-renders.
  */
 import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
@@ -34,7 +37,13 @@ import { subIdleJitter } from './rotorShared';
 import { AXIS, RADII, ROTOR, SPOOL_SPIN_SIGN, coreCaseRadiusAt } from '../data/engineLayout';
 import { createTube } from '../geometry/annularSection';
 import { createTurbineBladeGeometry } from '../geometry/turbineBladeGeometry';
-import { temperatureColor, heatFraction } from '../util/colorScale';
+import { temperatureColor } from '../util/colorScale';
+import {
+  createHeatStainedDrumMaterial,
+  createHeatStainedTurbineMaterial,
+  ensureSpanChordUVs,
+  overTempGlow,
+} from '../materials/hotSection';
 import { lerp } from '../sim/units';
 
 /** Blade counts per row (NGV stators are typically a bit denser than rotors). */
@@ -86,42 +95,15 @@ export function Turbine() {
   const lptDrumGroup = useRef<THREE.Group>(null!);
 
   // --- Materials ------------------------------------------------------------
-  // Two heat-stressed metal materials -- one per turbine module so we can tint
-  // each independently. We keep refs to them and mutate emissive in useFrame.
-  const hptMaterial = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: '#6b4a3a',
-        metalness: 0.6,
-        roughness: 0.55,
-        emissive: new THREE.Color('#ff5a2b'),
-        emissiveIntensity: 1.0,
-      }),
-    [],
-  );
-  const lptMaterial = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: '#6b4a3a',
-        metalness: 0.6,
-        roughness: 0.55,
-        emissive: new THREE.Color('#ff7847'),
-        emissiveIntensity: 0.5,
-      }),
-    [],
-  );
-  // The drum (and its rims) share the HPT-side glow but stay metallic/dim.
-  const drumMaterial = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: '#5a4536',
-        metalness: 0.7,
-        roughness: 0.5,
-        emissive: new THREE.Color('#ff5a2b'),
-        emissiveIntensity: 0.25,
-      }),
-    [],
-  );
+  // Heat-stained nickel alloy (procedural CanvasTexture tempering bands) — one
+  // per turbine module so we can drive each independently. NO glow at normal
+  // power: we keep refs and mutate emissive in useFrame, but the intensity
+  // stays 0 until the gas path exceeds its certified limit (over-temp event).
+  const hptMaterial = useMemo(() => createHeatStainedTurbineMaterial('hpt'), []);
+  const lptMaterial = useMemo(() => createHeatStainedTurbineMaterial('lpt'), []);
+  // The drum (and its rims) share the HPT staining but multiplied darker; it
+  // follows the HPT's over-temp event at reduced intensity.
+  const drumMaterial = useMemo(() => createHeatStainedDrumMaterial(), []);
 
   // Scratch colors so useFrame allocates nothing per frame.
   const hptColor = useRef(new THREE.Color());
@@ -129,6 +111,8 @@ export function Turbine() {
 
   // --- HPT stage geometries -------------------------------------------------
   // Small, hottest blades. growth 0.0 -> 0.2 across the (2) stages.
+  // ensureSpanChordUVs: the blade loft has no UVs — without them the staining
+  // map would collapse to a single texel on every blade.
   const hptStageGeos = useMemo<StageGeo[]>(() => {
     const stages: StageGeo[] = [];
     const span = AXIS.hptEnd - AXIS.hptStart;
@@ -136,11 +120,13 @@ export function Turbine() {
     for (let i = 0; i < hptStages; i++) {
       const t = hptStages > 1 ? i / (hptStages - 1) : 0;
       const growth = lerp(0.0, 0.2, t);
-      const geometry = createTurbineBladeGeometry({
-        hubRadius: 0.4,
-        tipRadius: RADII.hptOuter, // 0.6
-        growth,
-      });
+      const geometry = ensureSpanChordUVs(
+        createTurbineBladeGeometry({
+          hubRadius: 0.4,
+          tipRadius: RADII.hptOuter, // 0.6
+          growth,
+        }),
+      );
       // Center of stage i within [hptStart, hptEnd].
       const x = AXIS.hptStart + slot * (i + 0.5);
       stages.push({ geometry, x });
@@ -169,7 +155,7 @@ export function Turbine() {
         lerp(0.6, RADII.lptOuter, t),
         coreCaseRadiusAt(statorX) - LPT_TIP_CLEARANCE,
       );
-      const geometry = createTurbineBladeGeometry({ hubRadius, tipRadius, growth });
+      const geometry = ensureSpanChordUVs(createTurbineBladeGeometry({ hubRadius, tipRadius, growth }));
       const x = AXIS.lptStart + slot * (i + 0.5);
       stages.push({ geometry, x });
     }
@@ -200,24 +186,30 @@ export function Turbine() {
     [lptRims],
   );
 
-  // --- Heat glow + drum spin animation ---------------------------------------
+  // --- Over-temp glow + drum spin animation ---------------------------------
   useFrame(({ clock }) => {
-    const { engine, spool } = useSimStore.getState();
+    const { engine, spool, config: cfg } = useSimStore.getState();
 
-    // HPT glows with the turbine-inlet temperature (hottest in the engine).
+    // HOT-SECTION HONESTY: at normal power the metal shows NO glow — the heat
+    // history is the permanent tempering bands baked into the materials. The
+    // emissive only wakes in an OVER-TEMP event: once the gas temperature
+    // crosses its certified limit it ramps in hard (smoothstep over ~80 K).
     const tit = engine.turbineInletTemp;
     temperatureColor(tit, hptColor.current);
+    const hptOver = overTempGlow(tit, cfg.turbineInletTempRedline);
     hptMaterial.emissive.copy(hptColor.current);
-    hptMaterial.emissiveIntensity = 1.0 + heatFraction(tit);
-    // Drum follows the same hot color but stays subdued.
+    hptMaterial.emissiveIntensity = 1.6 * hptOver;
+    // Drum follows the HPT over-temp event but stays subdued.
     drumMaterial.emissive.copy(hptColor.current);
-    drumMaterial.emissiveIntensity = 0.2 + 0.4 * heatFraction(tit);
+    drumMaterial.emissiveIntensity = 0.6 * hptOver;
 
-    // LPT glows with the exhaust-gas temperature; kept dimmer than the HPT.
+    // LPT: tinted by Tt5, but the over-temp judgment happens on the certified
+    // EGT plane (T49, °C) against the takeoff limit from the TCDS.
     const egt = engine.exhaustGasTemp;
     temperatureColor(egt, lptColor.current);
+    const lptOver = overTempGlow(engine.egtC, cfg.egtTakeoffLimitC);
     lptMaterial.emissive.copy(lptColor.current);
-    lptMaterial.emissiveIntensity = 0.5 + 0.6 * heatFraction(egt);
+    lptMaterial.emissiveIntensity = 1.2 * lptOver;
 
     // HPT drum rides the HP spool; LPT drum rides the LP spool. Plus a tiny
     // start/shutdown rumble on both (zero at rest and at/above idle).
