@@ -34,6 +34,9 @@ export interface EngineAudioFrame {
   egtC: number;
   /** Displayed fuel flow [kg/s] (light-off ~0.14, idle ~0.25). */
   fuelFlowKgs: number;
+  /** FADEC VBV position (1 = doors open, 0 = closed) — from store.actuation,
+   *  so the drone dies exactly when the visible doors close. */
+  vbvOpenFrac: number;
 }
 
 interface ToneLayer {
@@ -314,8 +317,10 @@ class ProceduralEngineAudio {
 
     // --- VBV "whine-grind" drone ---------------------------------------------
     // The GE90's 10 open variable bleed valves give the famous sub-idle groan.
-    // Present between ~10% and idle N2, gone once the VBVs close at idle.
-    const vbvBand = smoothstep(0.1, 0.2, n2) * (1 - smoothstep(0.58, 0.655, n2));
+    // Gated on flow existing (N2 > ~10%) times the ACTUAL door position from
+    // the FADEC schedule (store.actuation) — the drone now fades exactly as the
+    // visible doors close, instead of on its own private schedule.
+    const vbvBand = smoothstep(0.1, 0.2, n2) * frame.vbvOpenFrac;
     const vbvHz = 320 * (0.94 + 0.12 * n2);
     setSmooth(this.vbvDrone.oscA.frequency, vbvHz, now, 0.09);
     setSmooth(this.vbvDrone.oscB.frequency, vbvHz * 1.0045, now, 0.09); // ~1.5 Hz beat

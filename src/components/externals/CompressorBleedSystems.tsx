@@ -41,11 +41,8 @@ const phiOfClock = (h: number) => -(h / 12) * Math.PI * 2;
 /** Inverse: the ALF clock hour of a slot rotation phi (for cutaway tests). */
 const hourOfPhi = (phi: number) => ((((-phi * 12) / (Math.PI * 2)) % 12) + 12) % 12;
 
-/** Clamped smoothstep on [0,1] — used for both VSV and VBV schedules. */
-const smooth01 = (t: number) => {
-  const x = THREE.MathUtils.clamp(t, 0, 1);
-  return x * x * (3 - 2 * x);
-};
+// (VSV/VBV schedules now come from the FADEC model — store.actuation — so the
+// hardware, the audio, and the gauges always agree. See src/sim/actuation.ts.)
 
 // --- VSV constants ----------------------------------------------------------
 const ARMS_PER_RING = 24;
@@ -264,19 +261,19 @@ export function CompressorBleedSystems() {
 
   // --- Live animation (non-reactive store reads, no React re-render) --------
   useFrame(() => {
-    const { spool, viewMode: vm } = useSimStore.getState();
+    const { actuation, viewMode: vm } = useSimStore.getState();
 
-    // VSV schedule: rings twisted (vanes closed) at/below idle N2 = 0.66,
-    // easing to 0 (vanes open) at takeoff N2 ≈ 1.08. Subtle but alive.
+    // VSV position from the FADEC schedule: rings twisted (vanes closed) at/
+    // below idle, easing to 0 (vanes open) at takeoff. Subtle but alive.
     if (ringsGroup.current) {
-      ringsGroup.current.rotation.x = VSV_CLOSED_ANGLE * (1 - smooth01((spool.n2 - 0.66) / (1.08 - 0.66)));
+      ringsGroup.current.rotation.x = VSV_CLOSED_ANGLE * (1 - actuation.vsvOpenFrac);
     }
 
-    // VBV schedule: all 10 doors fully open below idle (start: booster air
-    // dumps into the fan duct), modulating closed over N2 0.66 → 0.85.
+    // VBV position from the FADEC schedule: all 10 doors fully open below idle
+    // (start: booster air dumps into the fan duct), closing above idle.
     const doors = doorsRef.current;
     if (!doors) return;
-    const openAngle = MAX_DOOR_OPEN * (1 - smooth01((spool.n2 - 0.66) / (0.85 - 0.66)));
+    const openAngle = MAX_DOOR_OPEN * actuation.vbvOpenFrac;
     for (let k = 0; k < EXTERNALS.vbv.doorCount; k++) {
       const phi = ((k + 0.5) / EXTERNALS.vbv.doorCount) * Math.PI * 2;
       if (vm === 'cutaway' && !visibleInCutaway(hourOfPhi(phi))) {

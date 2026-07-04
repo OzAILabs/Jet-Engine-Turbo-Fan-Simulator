@@ -34,7 +34,7 @@ export function EngineAudio() {
     let frameId = 0;
 
     const update = () => {
-      const { config, engine, spool, instruments, startSeq, soundEnabled, soundVolume } =
+      const { config, engine, spool, instruments, startSeq, actuation, soundEnabled, soundVolume } =
         useSimStore.getState();
       engineAudio.setVolume(soundVolume);
 
@@ -55,6 +55,7 @@ export function EngineAudio() {
           lit: startSeq.lit,
           egtC: instruments.egtC,
           fuelFlowKgs: instruments.fuelFlowKgs,
+          vbvOpenFrac: actuation.vbvOpenFrac,
         });
       }
 

@@ -16,6 +16,7 @@
 import { create } from 'zustand';
 import { computeEngineState, equilibriumDynamics } from '../sim/engineModel';
 import { advanceSpools, transientSurgePenalty } from '../sim/spoolDynamics';
+import { computeActuation, type ActuationState } from '../sim/actuation';
 import {
   advanceStartSequence,
   beginShutdown,
@@ -111,6 +112,9 @@ export interface SimStore {
   /** Training scenario: igniters spark but nothing lights (forces an autostart abort/retry). */
   igniterFailure: boolean;
   instruments: Instruments;
+  /** FADEC variable-geometry positions (VSV/VBV) — single source of truth for
+   *  the 3D hardware, the audio, and any gauges. Computed each tick from N2. */
+  actuation: ActuationState;
 
   // View / UI toggles
   viewMode: ViewMode;
@@ -223,6 +227,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
   apuBleedPsi: 0,
   igniterFailure: false,
   instruments: buildInstruments(config, initialSpool, initialEngine, initialSeq),
+  actuation: computeActuation(initialSpool.n2),
 
   viewMode: 'cutaway',
   exhaustStyle: 'shader', // 'Dramatic' bright plume by default
@@ -315,6 +320,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
         startSeq: syncedSeq,
         autoStartActive: false, // reached idle/running — macro is done
         instruments: buildInstruments(cfg, nextSpool, nextEngine, syncedSeq),
+        actuation: computeActuation(nextSpool.n2),
       });
       return;
     }
@@ -379,6 +385,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
       fuelControl: cmdFuel,
       autoStartActive,
       instruments: buildInstruments(cfg, nextSpool, nextEngine, nextSeq),
+      actuation: computeActuation(nextSpool.n2),
     });
   },
 
@@ -435,6 +442,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
       fuelControl: 'RUN',
       startSelector: 'NORM',
       instruments: buildInstruments(get().config, spool, engine, startSeq),
+      actuation: computeActuation(spool.n2),
     });
   },
   resetToCruise: () => {
@@ -450,6 +458,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
       fuelControl: 'RUN',
       startSelector: 'NORM',
       instruments: buildInstruments(get().config, spool, engine, startSeq),
+      actuation: computeActuation(spool.n2),
     });
   },
   resetToColdDark: () => {
@@ -469,6 +478,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
       apuBleedPsi: 0,
       autoStartActive: false,
       instruments: buildInstruments(get().config, spool, engine, startSeq),
+      actuation: computeActuation(spool.n2),
     });
   },
 }));
