@@ -30,6 +30,7 @@ import { StationMarkers } from './StationMarkers';
 import { SectionLabels } from './SectionLabel';
 import { VelocityVectors } from './VelocityVectors';
 import { AccessoryGearbox } from './externals/AccessoryGearbox';
+import { AgbGearTrain } from './externals/AgbGearTrain';
 import { FuelIgnitionSystem } from './externals/FuelIgnitionSystem';
 import { CompressorBleedSystems } from './externals/CompressorBleedSystems';
 import { CaseDetail } from './externals/CaseDetail';
@@ -136,6 +137,7 @@ export function EngineModel3D() {
             themselves (null in 'full' and 'exploded'). */}
         <Bearings />
         <AccessoryGearbox />
+        <AgbGearTrain />
         <FuelIgnitionSystem />
         <CompressorBleedSystems />
         <CaseDetail />

@@ -344,6 +344,31 @@ export const EXTERNALS = {
   horizontalShaft: { clock: 6, xStart: -1.95, xEnd: -1.1 },
   /** Air-turbine starter clamps to the AFT face of the AGB; valve + duct just aft. */
   starter: { x: 0.18, clock: 6, standoff: 0.16 },
+  /**
+   * AGB gear train + spinning drivetrain (AgbGearTrain.tsx). Ratios are
+   * speeds as fractions/multiples of N2. gearRadii are spur-gear PITCH radii,
+   * forward → aft along the AGB's +Z inspection face; every gear turns at
+   * hpAngle · horizontalRatio · (baseGearRadius / r) with alternating sign,
+   * so pitch-line speeds match and the teeth stay visibly in mesh.
+   */
+  agbGearTrain: {
+    towerRatio: 0.9,
+    horizontalRatio: 0.8,
+    starterRatio: 3.0,
+    gearRadii: [0.09, 0.06, 0.085, 0.055, 0.075, 0.05],
+    baseGearRadius: 0.075,
+    gearThickness: 0.045,
+    toothPitch: 0.026,
+    toothDepth: 0.02,
+    /** Depth of the inspection pocket recessed into the AGB +Z flank. */
+    faceRecess: 0.07,
+    /** Inspection window on the +Z flank: world-x extents + height about the AGB centerline. */
+    window: { x0: -0.98, x1: -0.07, height: 0.24 },
+    /** Theta gap in the starter housing (CylinderGeometry params; the gap faces +Z after rotateZ(-PI/2)). */
+    starterSlot: { thetaStart: 0.35, thetaLength: Math.PI * 2 - 0.7 },
+    /** ATS turbine wheel: axial center + proportions (housing inner r is 0.135). */
+    starterWheel: { x: 0.2, tipRadius: 0.125, hubRadius: 0.05, blades: 17 },
+  },
   /** Fuel pump + HMU stack on the right (3:00-ish ALF) side of the AGB. */
   fuelPumpHmu: { x: -0.55, clock: 4.5, standoff: 0.2 },
   /** Oil tank on the fan case at 9:00 (hidden by the cutaway wedge — correct). */

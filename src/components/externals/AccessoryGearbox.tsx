@@ -15,7 +15,9 @@
  *
  * Performance: all housings merge into ONE mesh per material via
  * mergeGeometries; the accessory pads are ONE InstancedMesh; each fluid line
- * is ONE TubeGeometry. Total: 10 draw calls.
+ * is ONE TubeGeometry. Total: 9 draw calls. The MOVING drivetrain (tower +
+ * horizontal shafts, gear train, pad couplings, ATS wheel) lives in
+ * AgbGearTrain.tsx.
  */
 import { useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
@@ -47,7 +49,7 @@ const pt = (x: number, hour: number, r: number): THREE.Vector3 => {
 
 // --- Accessory pads on the AGB belly (world x; +z = engine LEFT, ALF 9:00) -
 // One unit cylinder instanced + scaled per pad; biggest = IDG, left-aft.
-const PADS = [
+export const PADS = [
   { label: 'IDG', x: -0.18, z: 0.16, r: 0.155, len: 0.22 },
   { label: 'backup generator', x: -0.86, z: 0.16, r: 0.105, len: 0.16 },
   { label: 'lube & scavenge unit', x: -0.5, z: 0.18, r: 0.1, len: 0.16 },
@@ -56,7 +58,7 @@ const PADS = [
 ] as const;
 
 /** Pad center height: hang from the box underside with a little embed. */
-const padCenterY = (len: number) => AGB_Y - AGB.height / 2 + 0.03 - len / 2;
+export const padCenterY = (len: number) => AGB_Y - AGB.height / 2 + 0.03 - len / 2;
 
 const dummy = new THREE.Object3D();
 
@@ -69,12 +71,28 @@ export function AccessoryGearbox() {
     const housing: THREE.BufferGeometry[] = []; // case-gray castings
     const dark: THREE.BufferGeometry[] = []; // dark control boxes
     const brass: THREE.BufferGeometry[] = []; // clamps & couplings
-    const shafts: THREE.BufferGeometry[] = []; // bright steel shafts
+    // (Driveshafts + coupling collars moved to AgbGearTrain.tsx — they spin.)
 
-    // AGB main case: rectangular casting with a rounded sump belly.
-    const box = new THREE.BoxGeometry(AGB_LEN, AGB.height, AGB.width);
-    box.translate(AGB_MID_X, AGB_Y, 0);
+    // AGB main case: rectangular casting with a rounded sump belly. The +Z
+    // (engine-left, camera-side) flank is recessed by faceRecess for the
+    // gear-train inspection pocket (AgbGearTrain.tsx); full-depth face strips
+    // restore the flank around the window so it reads as a machined pocket.
+    const GT = EXTERNALS.agbGearTrain;
+    const box = new THREE.BoxGeometry(AGB_LEN, AGB.height, AGB.width - GT.faceRecess);
+    box.translate(AGB_MID_X, AGB_Y, -GT.faceRecess / 2);
     housing.push(box);
+    const stripZ = AGB.width / 2 - GT.faceRecess / 2;
+    const stripH = (AGB.height - GT.window.height) / 2;
+    for (const [w, h, cx, cy] of [
+      [AGB_LEN, stripH, AGB_MID_X, AGB_Y + AGB.height / 2 - stripH / 2],
+      [AGB_LEN, stripH, AGB_MID_X, AGB_Y - AGB.height / 2 + stripH / 2],
+      [GT.window.x0 - AGB.xStart, GT.window.height, (AGB.xStart + GT.window.x0) / 2, AGB_Y],
+      [AGB.xEnd - GT.window.x1, GT.window.height, (GT.window.x1 + AGB.xEnd) / 2, AGB_Y],
+    ] as const) {
+      const strip = new THREE.BoxGeometry(w, h, GT.faceRecess);
+      strip.translate(cx, cy, stripZ);
+      housing.push(strip);
+    }
     const sump = new THREE.CylinderGeometry(0.2, 0.2, AGB_LEN * 0.9, 28);
     sump.rotateZ(Math.PI / 2); // axis → +X
     sump.translate(AGB_MID_X, AGB_Y - 0.1, 0);
@@ -82,8 +100,10 @@ export function AccessoryGearbox() {
 
     // Stiffening ribs: thin fins proud of the casting every ~0.2 m.
     for (let i = 0; i < 5; i++) {
-      const rib = new THREE.BoxGeometry(0.022, AGB.height + 0.05, AGB.width + 0.05);
-      rib.translate(AGB_MID_X - 0.42 + i * 0.21, AGB_Y - 0.01, 0);
+      // Ribs stop short of the +Z inspection window (see AgbGearTrain.tsx).
+      const ribW = AGB.width + 0.05 - GT.faceRecess - 0.045;
+      const rib = new THREE.BoxGeometry(0.022, AGB.height + 0.05, ribW);
+      rib.translate(AGB_MID_X - 0.42 + i * 0.21, AGB_Y - 0.01, -(GT.faceRecess + 0.045) / 2);
       housing.push(rib);
     }
 
@@ -93,33 +113,8 @@ export function AccessoryGearbox() {
     tgb.translate(EXTERNALS.tgb.x, tgbPos.y, tgbPos.z);
     housing.push(tgb);
 
-    // Radial driveshaft inside the 6:00 strut (IGB → TGB), thin steel.
-    const rs = EXTERNALS.radialShaft;
-    const radial = new THREE.CylinderGeometry(0.024, 0.024, rs.rOuter - rs.rInner, 12);
-    radial.translate(0, (rs.rInner + rs.rOuter) / 2, 0); // built along radial +Y
-    radial.rotateX(-clockPhi(rs.clock)); // swing to the strut's clock
-    radial.translate(rs.x, 0, 0);
-    shafts.push(radial);
-
-    // Horizontal driveshaft TGB → AGB forward face, with two coupling collars.
-    const hs = EXTERNALS.horizontalShaft;
-    const dY = AGB_Y - tgbPos.y; // AGB rides a touch higher than the TGB
-    const hsLen = Math.hypot(hs.xEnd - hs.xStart, dY);
-    const tilt = Math.atan2(dY, hs.xEnd - hs.xStart);
-    const hsMid: [number, number] = [(hs.xStart + hs.xEnd) / 2, (tgbPos.y + AGB_Y) / 2];
-    const horiz = new THREE.CylinderGeometry(0.034, 0.034, hsLen, 12);
-    horiz.rotateZ(-Math.PI / 2); // axis → +X
-    horiz.rotateZ(tilt);
-    horiz.translate(hsMid[0], hsMid[1], 0);
-    shafts.push(horiz);
-    for (const off of [-hsLen / 2 + 0.07, hsLen / 2 - 0.07]) {
-      const collar = new THREE.CylinderGeometry(0.055, 0.055, 0.05, 16);
-      collar.rotateZ(-Math.PI / 2);
-      collar.translate(off, 0, 0);
-      collar.rotateZ(tilt);
-      collar.translate(hsMid[0], hsMid[1], 0);
-      brass.push(collar);
-    }
+    // Radial + horizontal driveshafts (and their coupling collars) are built
+    // in AgbGearTrain.tsx so they can spin with the HP spool.
 
     // Air-turbine starter on the AGB aft face: mount adapter, fat body,
     // V-band clamp ring, and the starter air valve block just aft.
@@ -129,7 +124,12 @@ export function AccessoryGearbox() {
     adapter.rotateZ(-Math.PI / 2);
     adapter.translate(AGB.xEnd + 0.04, stPos.y, stPos.z);
     housing.push(adapter);
-    const starterBody = new THREE.CylinderGeometry(0.135, 0.135, 0.28, 28);
+    // Theta gap so the ATS turbine wheel (AgbGearTrain.tsx) shows through a
+    // slot on the +Z (camera) side of the housing while it cranks.
+    const starterBody = new THREE.CylinderGeometry(
+      0.135, 0.135, 0.28, 28, 1, false,
+      GT.starterSlot.thetaStart, GT.starterSlot.thetaLength,
+    );
     starterBody.rotateZ(-Math.PI / 2);
     starterBody.translate(st.x + 0.07, stPos.y, stPos.z);
     housing.push(starterBody);
@@ -214,7 +214,6 @@ export function AccessoryGearbox() {
       housing: mergeGeometries(housing),
       dark: mergeGeometries(dark),
       brass: mergeGeometries(brass),
-      shafts: mergeGeometries(shafts),
       fuelLine,
       airDuct,
       tank,
@@ -231,7 +230,6 @@ export function AccessoryGearbox() {
       bracket: new THREE.MeshStandardMaterial({ color: '#8a9099', metalness: 0.7, roughness: 0.55 }),
       dark: new THREE.MeshStandardMaterial({ color: '#3a3f47', metalness: 0.4, roughness: 0.6 }),
       brass: new THREE.MeshStandardMaterial({ color: '#c9a96a', metalness: 0.9, roughness: 0.35 }),
-      steel: new THREE.MeshStandardMaterial({ color: '#cdd3d9', metalness: 0.95, roughness: 0.25 }),
       fuel: new THREE.MeshStandardMaterial({ color: TUBE_COLORS.fuel, metalness: 0.6, roughness: 0.45 }),
       oil: new THREE.MeshStandardMaterial({ color: TUBE_COLORS.oil, metalness: 0.6, roughness: 0.45 }),
       pneumatic: new THREE.MeshStandardMaterial({ color: TUBE_COLORS.pneumatic, metalness: 0.6, roughness: 0.45 }),
@@ -275,8 +273,7 @@ export function AccessoryGearbox() {
       <mesh geometry={G.dark} material={M.dark} castShadow={false} />
       {/* Brass details: V-band clamp + driveshaft coupling collars. */}
       <mesh geometry={G.brass} material={M.brass} castShadow={false} />
-      {/* Radial + horizontal driveshafts. */}
-      <mesh geometry={G.shafts} material={M.steel} castShadow={false} />
+      {/* Radial + horizontal driveshafts spin — see AgbGearTrain.tsx. */}
       {/* Metered fuel to the combustor manifolds (red, MIL-STD-1247). */}
       <mesh geometry={G.fuelLine} material={M.fuel} castShadow={false} />
       {/* Starter air duct (orange). */}
