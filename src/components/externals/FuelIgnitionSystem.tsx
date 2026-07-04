@@ -13,12 +13,20 @@
  * wedge, and any per-clock item that fails visibleInCutaway is skipped
  * (this is lower-half hardware, so almost all of it survives).
  *
- * Draw calls: 8 total — merged manifold rings (1), pigtails (1 InstancedMesh),
+ * LIVE: the fuel-red plumbing glows softly whenever fuel is actually flowing
+ * (emissive on the shared fuel material tracks instruments.fuelFlowKgs), and
+ * the two igniter-plug tips strobe an electric blue-white spark at ~6 Hz —
+ * matching the audio's igniter click rate — gated on startSeq.ignitionOn and
+ * honouring the A/B/BOTH igniter selection per start attempt.
+ *
+ * Draw calls: 10 total — merged manifold rings (1), pigtails (1 InstancedMesh),
  * nozzle-stem flanges (1 InstancedMesh), exciter boxes (1 InstancedMesh),
- * merged igniter leads (1), igniter plugs (1 InstancedMesh), staging-valve
+ * merged igniter leads (1), igniter plugs (1 InstancedMesh), 2 tiny spark
+ * glows, staging-valve
  * block (1), merged tee/supply tubes (1).
  */
 import { useLayoutEffect, useMemo, useRef } from 'react';
+import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { useSimStore } from '../../store/useSimStore';
@@ -40,6 +48,11 @@ const STEM_H = 0.05; // stem flange height above the case skin
 const VALVE_X = 0.28; // staging valve sits between the two rings
 const VALVE_CLOCK = 4.5; // lower right, where the HMU supply arrives
 const EXCITER_SPREAD = 0.25; // the two exciter boxes sit side by side (± clock)
+
+/** Igniter spark strobe rate [Hz] — matches the audio's 6 Hz igniter clicks. */
+const SPARK_HZ = 6;
+/** Takeoff fuel flow [kg/s] used to normalize the plumbing glow. */
+const FUEL_FLOW_REF = 4.7;
 
 // Shared scratch object (BladeRow pattern) — never allocated per frame.
 const dummy = new THREE.Object3D();
@@ -109,7 +122,15 @@ export function FuelIgnitionSystem() {
 
   // --- Materials -------------------------------------------------------------
   const fuelMat = useMemo(
-    () => new THREE.MeshStandardMaterial({ color: TUBE_COLORS.fuel, metalness: 0.55, roughness: 0.45 }),
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: TUBE_COLORS.fuel,
+        metalness: 0.55,
+        roughness: 0.45,
+        // Lights up when fuel actually flows (intensity mutated per frame).
+        emissive: new THREE.Color('#ff4a26'),
+        emissiveIntensity: 0,
+      }),
     [],
   );
   const steelMat = useMemo(
@@ -237,6 +258,61 @@ export function FuelIgnitionSystem() {
     return mergeGeometries([body, collar]) ?? body;
   }, []);
 
+  // --- Igniter spark glows: a tiny strobing point at each plug tip ----------
+  const sparkPts = useMemo(
+    () =>
+      EXTERNALS.igniterPlugs.map((p) => {
+        const { y, z } = clockToYZ(p.clock, coreCaseRadiusAt(p.x) + 0.095);
+        return { x: p.x, y, z };
+      }),
+    [],
+  );
+  const sparkMats = useMemo(
+    () =>
+      EXTERNALS.igniterPlugs.map(
+        () =>
+          new THREE.MeshBasicMaterial({
+            color: '#cfe8ff', // electric blue-white
+            transparent: true,
+            opacity: 0,
+            depthWrite: false,
+          }),
+      ),
+    [],
+  );
+  const sparkA = useRef<THREE.Mesh>(null!);
+  const sparkB = useRef<THREE.Mesh>(null!);
+
+  // --- Live animation (non-reactive store reads, no React re-render) --------
+  useFrame(({ clock }) => {
+    const { startSeq, instruments } = useSimStore.getState();
+    const t = clock.elapsedTime;
+
+    // Fuel plumbing glows softly while fuel actually flows, with a faint
+    // pulse so the flow reads as motion rather than a painted-on tint.
+    const flow = Math.min(1, Math.max(0, instruments.fuelFlowKgs / FUEL_FLOW_REF));
+    fuelMat.emissiveIntensity =
+      flow > 0.002 ? (0.1 + 0.45 * flow) * (0.85 + 0.15 * Math.sin(t * 9)) : 0;
+
+    // Igniter sparks: sharp ~6 Hz strobe at the active plug tip(s) only.
+    // Plug index 0 is igniter A, index 1 is igniter B (alternated per start
+    // attempt by the EEC; BOTH on autostart retry 3).
+    const refs = [sparkA, sparkB];
+    for (let i = 0; i < refs.length; i++) {
+      const mesh = refs[i].current;
+      if (!mesh) continue;
+      const on =
+        startSeq.ignitionOn &&
+        (startSeq.activeIgniter === 'BOTH' || startSeq.activeIgniter === (i === 0 ? 'A' : 'B'));
+      mesh.visible = on;
+      if (!on) continue;
+      const phase = (t * SPARK_HZ + i * 0.5) % 1;
+      const flash = phase < 0.15 ? 1 : 0.06; // snap, then faint residual
+      sparkMats[i].opacity = flash;
+      mesh.scale.setScalar(0.75 + 0.5 * flash);
+    }
+  });
+
   // --- Shielded igniter leads: exciter aft faces → plug tops, hugging the case
   const leadsGeo = useMemo(() => {
     const e = EXTERNALS.exciters;
@@ -304,6 +380,22 @@ export function FuelIgnitionSystem() {
 
       {/* Igniter plugs */}
       {plugHours.length > 0 && <ClockInstances geometry={plugGeo} material={brassMat} hours={plugHours} />}
+
+      {/* Igniter spark glows — strobed in useFrame while ignition is on. */}
+      {sparkPts.map((p, i) =>
+        !cutaway || visibleInCutaway(EXTERNALS.igniterPlugs[i].clock) ? (
+          <mesh
+            key={`spark-${i}`}
+            ref={i === 0 ? sparkA : sparkB}
+            position={[p.x, p.y, p.z]}
+            visible={false}
+            castShadow={false}
+          >
+            <sphereGeometry args={[0.02, 10, 10]} />
+            <primitive object={sparkMats[i]} attach="material" />
+          </mesh>
+        ) : null,
+      )}
 
       {/* Staging valve block + tee/supply tubes */}
       {valveVisible && (
