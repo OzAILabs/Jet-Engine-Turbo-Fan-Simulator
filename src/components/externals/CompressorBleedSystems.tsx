@@ -61,12 +61,21 @@ const LINK_R = (ringRadiusAt(EXTERNALS.vsvRings.xs[0]) + ringRadiusAt(EXTERNALS.
 
 // --- VBV constants ----------------------------------------------------------
 const MAX_DOOR_OPEN = (35 * Math.PI) / 180;
-/** Door length chosen so a fully-open tip reaches exactly EXTERNALS.vbv.rOuter. */
-const DOOR_LEN = (EXTERNALS.vbv.rOuter - EXTERNALS.vbv.rInner) / Math.sin(MAX_DOOR_OPEN);
+/** Radial gap between a fully-open door tip and the louver grille above it.
+ *  The slats are PITCHED boxes, so their inner corners dip ~0.027 below
+ *  LOUVER_R — without this clearance the doors sweep straight through them
+ *  as they modulate with throttle. */
+const DOOR_TIP_CLEARANCE = 0.015;
+/** Door length chosen so a fully-open tip stops just short of the grille. */
+const DOOR_LEN =
+  (EXTERNALS.vbv.rOuter - DOOR_TIP_CLEARANCE - EXTERNALS.vbv.rInner) / Math.sin(MAX_DOOR_OPEN);
 const DOOR_HINGE_X = EXTERNALS.vbv.x - DOOR_LEN / 2; // hinged at the forward edge
 const DOOR_HINGE_R = EXTERNALS.vbv.rInner + 0.005; // just proud of the collar
 const LOUVER_COUNT = 36;
-const LOUVER_R = 0.715; // inner bypass wall, just outboard of the open door tips
+/** Bleed-exit grille radius. Slat inner corners reach LOUVER_R − 0.027 (pitch
+ *  dip + half thickness); at 0.74 they clear the door-tip sweep (≤ ~0.695
+ *  incl. plate thickness) by ~0.018 at every throttle setting. */
+const LOUVER_R = 0.74;
 
 // Scratch matrices reused for all per-instance composition (no per-frame GC).
 const mSlot = new THREE.Matrix4();
