@@ -1308,3 +1308,269 @@ input.slider::-moz-range-thumb {
   color: var(--muted);
   line-height: 1.35;
 }
+
+
+/* ===========================================================================
+   ThrottleQuadrant (tq-) — pedestal power stack: fire handle, thrust lever,
+   guarded fuel-control switch. All geometry is SVG (viewBox 0 0 140 260).
+   =========================================================================== */
+.tq-field {
+  margin-bottom: 12px;
+}
+.tq-svg {
+  display: block;
+  width: 100%;
+  max-width: 184px;
+  margin: 4px auto 0;
+  touch-action: none; /* the lever's pointer-Y drag owns vertical gestures */
+  user-select: none;
+  -webkit-user-select: none;
+}
+.tq-svg text {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+.tq-divider {
+  stroke: var(--panel-border);
+}
+.tq-sec-title {
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 1.6px;
+  text-anchor: middle;
+  fill: var(--muted);
+}
+
+/* --- fire handle ----------------------------------------------------------- */
+.tq-fire {
+  cursor: pointer;
+  outline: none;
+}
+.tq-fire-plate {
+  fill: rgba(8, 11, 16, 0.7);
+  stroke: var(--panel-border);
+}
+.tq-fire:hover .tq-fire-plate,
+.tq-fire:focus-visible .tq-fire-plate {
+  stroke: var(--crit);
+}
+.tq-fire-ring {
+  fill: none;
+  stroke: var(--crit);
+  stroke-width: 1.6;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.tq-fire.is-pulled .tq-fire-ring {
+  animation: tq-fire-pulse 1.1s ease-in-out infinite;
+}
+@keyframes tq-fire-pulse {
+  0%, 100% { opacity: 0.45; filter: drop-shadow(0 0 1px rgba(255, 93, 93, 0.4)); }
+  50% { opacity: 1; filter: drop-shadow(0 0 5px rgba(255, 93, 93, 0.9)); }
+}
+.tq-fire-grip-g {
+  transition: transform 0.18s ease-out;
+}
+.tq-fire.is-pulled .tq-fire-grip-g {
+  transform: translateY(-9px); /* handle latched OUT */
+}
+.tq-fire-stem {
+  fill: #2a313c;
+}
+.tq-fire-grip {
+  fill: color-mix(in oklab, var(--crit), #000 48%);
+  stroke: color-mix(in oklab, var(--crit), #000 20%);
+  stroke-width: 1.2;
+}
+.tq-fire:hover .tq-fire-grip {
+  filter: brightness(1.2);
+}
+.tq-fire-grip-line {
+  stroke: rgba(0, 0, 0, 0.35);
+  stroke-width: 1.4;
+}
+.tq-fire-collar {
+  fill: #1c222b;
+  stroke: #39424e;
+}
+.tq-fire-label {
+  font-size: 6.5px;
+  font-weight: 700;
+  letter-spacing: 1.3px;
+  text-anchor: middle;
+  fill: var(--muted);
+}
+.tq-fire-label.is-alert {
+  fill: var(--crit);
+  letter-spacing: 0.6px; /* longer legend still fits the 140-unit plate row */
+}
+
+/* --- thrust lever ----------------------------------------------------------- */
+.tq-readout.is-off {
+  opacity: 0.4;
+}
+.tq-ro-label {
+  font-size: 6.5px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  fill: var(--muted);
+}
+.tq-ro-value {
+  font-family: 'Consolas', 'Roboto Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 9.5px;
+  font-weight: 700;
+  fill: var(--accent-2);
+}
+.tq-lever {
+  cursor: grab;
+  outline: none;
+}
+.tq-lever.is-dragging {
+  cursor: grabbing;
+}
+.tq-lever.is-disabled {
+  pointer-events: none;
+  opacity: 0.35;
+}
+.tq-hit-arc {
+  fill: none;
+  stroke: #fff;
+  stroke-opacity: 0;
+  stroke-width: 30;
+  pointer-events: stroke; /* invisible but grabbable along the whole track */
+}
+.tq-arc {
+  fill: none;
+  stroke: #2a3340;
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+.tq-arc-fill {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 5;
+  stroke-linecap: round;
+  opacity: 0.85;
+}
+.tq-tick {
+  stroke: rgba(120, 150, 190, 0.4);
+  stroke-width: 1.2;
+}
+.tq-detent {
+  font-size: 6px;
+  font-weight: 700;
+  letter-spacing: 0.9px;
+  fill: var(--muted);
+}
+.tq-detent-max {
+  text-anchor: middle;
+}
+.tq-pivot-boss {
+  fill: #1c222b;
+  stroke: #39424e;
+  stroke-width: 2;
+}
+.tq-arm {
+  stroke: #39424e;
+  stroke-width: 6;
+  stroke-linecap: round;
+}
+.tq-arm-core {
+  stroke: #566173;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.tq-knob {
+  fill: #39424e;
+  stroke: #566173;
+  stroke-width: 1.2;
+}
+.tq-knob-ridge {
+  stroke: #1c222b;
+  stroke-width: 1.4;
+}
+.tq-lever:hover .tq-knob {
+  stroke: var(--accent);
+}
+.tq-lever:focus-visible .tq-knob,
+.tq-lever.is-dragging .tq-knob {
+  stroke: var(--accent);
+  stroke-width: 1.8;
+  filter: drop-shadow(0 0 3px rgba(95, 168, 255, 0.8));
+}
+
+/* --- fuel control switch + guard --------------------------------------------- */
+.tq-fuelswitch {
+  cursor: pointer;
+  outline: none;
+}
+.tq-fuel-track {
+  fill: rgba(8, 11, 16, 0.85);
+  stroke: var(--panel-border);
+}
+.tq-fuelswitch:hover .tq-fuel-track,
+.tq-fuelswitch:focus-visible .tq-fuel-track {
+  stroke: var(--accent);
+}
+.tq-fuel-slot {
+  fill: #10141a;
+  stroke: #2a3340;
+}
+.tq-fuel-knob-g {
+  transition: transform 0.16s ease-in;
+}
+.tq-fuel-knob-g.is-cutoff {
+  transform: translateY(26px); /* slides to the CUTOFF end of the slot */
+}
+.tq-fuel-knob {
+  fill: #4a5462;
+  stroke: #6b7889;
+  stroke-width: 1.2;
+}
+.tq-fuel-knob-dot {
+  fill: #171c23;
+}
+.tq-fuel-legend {
+  font-size: 6.5px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-anchor: end;
+  fill: var(--muted);
+}
+.tq-fuel-legend.is-on-run {
+  fill: var(--ok);
+}
+.tq-fuel-legend.is-on-cutoff {
+  fill: var(--crit);
+}
+.tq-guard-hinge {
+  fill: #1c222b;
+  stroke: #39424e;
+}
+.tq-guard {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 0.22s cubic-bezier(0.3, 1.3, 0.5, 1);
+  cursor: pointer;
+  outline: none;
+}
+.tq-guard.is-lifted {
+  transform: translateX(33px) rotate(7deg); /* flipped aside on its hinge */
+}
+.tq-guard-flap {
+  fill: #232a34;
+  stroke: #39424e;
+  stroke-width: 1.2;
+}
+.tq-guard:hover .tq-guard-flap,
+.tq-guard:focus-visible .tq-guard-flap {
+  stroke: var(--accent);
+}
+.tq-guard.is-lifted .tq-guard-flap {
+  fill: #1a2029;
+  stroke: var(--warn);
+}
+.tq-guard-ridge {
+  stroke: #39424e;
+  stroke-width: 1.2;
+}
