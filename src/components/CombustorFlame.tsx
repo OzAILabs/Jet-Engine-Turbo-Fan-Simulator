@@ -110,7 +110,7 @@ const FRAG = /* glsl */ `
     float lay = vLayer;
     float aroundScale = mix(6.0, 11.0, lay);
     float axialScale  = mix(3.0, 5.5, lay);
-    float flowSpeed   = (0.9 + 1.9 * uPower) * mix(0.7, 1.35, lay);
+    float flowSpeed   = (1.5 + 2.1 * uPower) * mix(0.7, 1.35, lay);
     float swirlSpeed  = (0.25 + 0.7 * uPower) * mix(1.0, -1.4, lay); // counter-swirl layers
 
     // Noise domain: u wraps 0..1, so scale by whole numbers to keep the seam
@@ -125,9 +125,11 @@ const FRAG = /* glsl */ `
                      + (0.06 + 0.16 * uPower) * sin(t * 14.3 + lay * 4.7);
 
     // Coverage: high power lowers the cut so fire fills more of the volume.
-    float cut = mix(0.62, 0.38, uPower) - 0.18 * uBurst;
+    // The floor is generous — even idle shows a whole animated chamber, not
+    // isolated kernels.
+    float cut = mix(0.50, 0.32, uPower) - 0.16 * uBurst;
     float I = smoothstep(cut, 1.0, n) * roar;
-    I = pow(I, mix(1.6, 1.05, uPower)); // contrast: lazy kernels -> raging wash
+    I = pow(I, mix(1.35, 1.0, uPower)); // contrast: busy burn -> raging wash
 
     // Axial envelope: fire erupts in the primary zone (just aft of the dome)
     // and thins toward the turbine; the burst momentarily lengthens it.
@@ -151,7 +153,7 @@ const FRAG = /* glsl */ `
     col = mix(col, cYellow, smoothstep(0.45, 0.8, I));
     col = mix(col, cWhite, smoothstep(0.8, 1.15, I));
 
-    float gain = (0.55 + 1.15 * uPower) * (1.0 + 1.6 * uBurst);
+    float gain = (0.9 + 1.1 * uPower) * (1.0 + 1.6 * uBurst);
     float flameA = I * axial * ignMask * uLit;
 
     // Pre-light fuel haze: cool gray-brown wisps streaming aft, no ignition
@@ -161,7 +163,7 @@ const FRAG = /* glsl */ `
     vec3 hazeCol = vec3(0.30, 0.27, 0.235);
 
     vec3 rgb = col * gain * flameA + hazeCol * hazeA;
-    float a = clamp(flameA * (0.55 + 0.45 * uPower + 0.5 * uBurst) + hazeA, 0.0, 1.0);
+    float a = clamp(flameA * (0.75 + 0.3 * uPower + 0.5 * uBurst) + hazeA, 0.0, 1.0);
     if (a < 0.004) discard;
     gl_FragColor = vec4(rgb, a);
   }
@@ -235,8 +237,10 @@ export function CombustorFlame(props: { length: number }) {
     litSmooth.current += ((lit ? 1 : 0) - litSmooth.current) * Math.min(1, dt * 8);
 
     // Violence tracks fuel flow (the burn), not the throttle lever directly.
+    // A floor keeps even the idle burn a busy, whole-chamber fire; the top
+    // end is reserved for the takeoff rage.
     const fuelFrac = Math.min(instruments.fuelFlowKgs / config.takeoffFuelFlow, 1);
-    const power = lit ? Math.pow(fuelFrac, 0.75) : 0;
+    const power = lit ? 0.22 + 0.78 * Math.pow(fuelFrac, 0.75) : 0;
 
     // Pre-light haze: fuel valve open + metering, but no flame yet.
     const haze = !lit && startSeq.fuelValveOpen ? Math.min(1, instruments.fuelFlowKgs / 0.15) : 0;

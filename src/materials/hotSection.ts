@@ -206,19 +206,20 @@ export function createHeatStainedDrumMaterial(): THREE.MeshStandardMaterial {
 }
 
 /**
- * Pale thermal-barrier-coating ceramic for the combustor liners. Kept
- * semi-transparent / DoubleSide / no-depth-write exactly like the liner it
- * replaces, so the flame pockets inside the annulus stay visible in the
- * full and transparent views.
+ * Thermal-barrier-coating ceramic for the combustor liners — soot-darkened in
+ * service. The original pale/white 0.55-opacity shell WASHED OUT the additive
+ * fire behind it (additive orange over a bright surface reads as nothing);
+ * dark + very see-through lets the flame own the chamber while the liner
+ * still reads as a surface. DoubleSide / no-depth-write as before.
  */
 export function createCeramicLinerMaterial(): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({
-    color: '#ffffff',
+    color: '#6f665c',
     map: ceramicTexture(),
     metalness: 0.05,
-    roughness: 0.8,
+    roughness: 0.85,
     transparent: true,
-    opacity: 0.55,
+    opacity: 0.24,
     side: THREE.DoubleSide,
     depthWrite: false,
   });

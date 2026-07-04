@@ -13,8 +13,9 @@
  */
 import { useMemo } from 'react';
 import * as THREE from 'three';
+import { useSimStore } from '../store/useSimStore';
 import { AXIS, RADII } from '../data/engineLayout';
-import { createTube } from '../geometry/annularSection';
+import { CUTAWAY, createTube } from '../geometry/annularSection';
 import { createCeramicLinerMaterial } from '../materials/hotSection';
 import { CombustorFlame } from './CombustorFlame';
 
@@ -29,14 +30,25 @@ export function Combustor() {
   const length = AXIS.combustorEnd - AXIS.combustorStart;
   const xCenter = (AXIS.combustorStart + AXIS.combustorEnd) / 2;
 
-  // --- Liner geometries (created once) -----------------------------------
+  // The museum cutaway wedge slices the combustor liners open too, so the
+  // fire is seen DIRECTLY through the cut instead of through the shell.
+  // (createTube and createLatheAlongX share the same theta convention, so
+  // passing CUTAWAY straight in aligns this wedge with the casings'.)
+  const cutaway = useSimStore((s) => s.viewMode === 'cutaway');
+
+  // --- Liner geometries (rebuilt only when the cutaway toggles) ----------
+  const wedge = cutaway
+    ? { thetaStart: CUTAWAY.thetaStart, thetaLength: CUTAWAY.thetaLength }
+    : undefined;
   const outerLinerGeo = useMemo(
-    () => createTube(RADII.combustorOuter, RADII.combustorOuter, length),
-    [length],
+    () => createTube(RADII.combustorOuter, RADII.combustorOuter, length, wedge),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [length, cutaway],
   );
   const innerLinerGeo = useMemo(
-    () => createTube(INNER_LINER_RADIUS, INNER_LINER_RADIUS, length),
-    [length],
+    () => createTube(INNER_LINER_RADIUS, INNER_LINER_RADIUS, length, wedge),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [length, cutaway],
   );
   // --- Liner material (shared by both liners) ----------------------------
   // Pale thermal-barrier-coating ceramic (procedural faint soot mottling);
