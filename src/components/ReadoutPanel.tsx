@@ -60,7 +60,9 @@ export function ReadoutPanel() {
 
   return (
     <div className="panel">
-      <div className="panel-title">Live Readouts</div>
+      {/* Primary flight-deck values (N1/EGT/N2/FF/oil) now live on the EICAS
+          gauges; this panel is the full numeric engineering breakdown. */}
+      <div className="panel-title">Engineering Data</div>
 
       <div className="readouts">
         {/* --- Thrust ----------------------------------------------------- */}

@@ -938,3 +938,142 @@ input.slider::-moz-range-thumb {
 .eicas-msg.is-ok {
   color: #56c98a;
 }
+
+/* ===========================================================================
+   EICAS gauge cluster (EicasGauges.tsx) — 777-style N1/EGT/N2 arc gauges
+   with boxed digital readouts, command bug, and exceedance latching.
+   =========================================================================== */
+.eic-cluster {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.eic-dials {
+  display: flex;
+  gap: 7px;
+  justify-content: space-between;
+}
+
+/* Dial bezel — dark CRT face, subtle inner shadow + top sheen. */
+.eic-gauge {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 4px 3px 3px;
+  text-align: center;
+  background:
+    radial-gradient(120% 95% at 50% 18%, rgba(30, 40, 52, 0.55), rgba(6, 9, 13, 0.9) 70%),
+    #0a0e13;
+  border: 1px solid #222a35;
+  border-radius: 8px;
+  box-shadow:
+    inset 0 0 14px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(140, 170, 210, 0.07);
+}
+.eic-gauge svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  overflow: visible;
+}
+
+/* Scale */
+.eic-arc { fill: none; stroke: #7c8797; stroke-width: 1.6; }
+.eic-varc { fill: none; stroke: #eef3fa; stroke-width: 3; }
+.eic-tick { stroke: #97a3b3; stroke-width: 0.9; }
+.eic-tick-major { stroke: #dbe3ee; stroke-width: 1.6; }
+.eic-num {
+  fill: #c6d1df;
+  font-size: 6.8px;
+  font-family: 'Consolas', 'Roboto Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Limits & bugs */
+.eic-redline { stroke: var(--crit); stroke-width: 2.6; }
+.eic-amber { fill: none; stroke: var(--warn); stroke-width: 3; opacity: 0.95; }
+.eic-startlimit { stroke: #eef3fa; stroke-width: 1.5; stroke-dasharray: 3 2.2; }
+.eic-peak { stroke: var(--crit); stroke-width: 1.2; }
+.eic-bug { fill: #d883f0; stroke: rgba(0, 0, 0, 0.35); stroke-width: 0.4; }
+
+/* Needle */
+.eic-needle { stroke: #eef3fa; stroke-width: 2.4; stroke-linecap: round; }
+.eic-hub { fill: #eef3fa; }
+
+/* Boxed digital readout — tabular digits, faint green-white phosphor glow. */
+.eic-lcd-box {
+  fill: rgba(3, 6, 9, 0.88);
+  stroke: rgba(120, 150, 190, 0.3);
+  stroke-width: 1;
+}
+.eic-lcd {
+  fill: #e6f4ec;
+  font-size: 12.5px;
+  font-weight: 600;
+  font-family: 'Consolas', 'Roboto Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  filter: drop-shadow(0 0 2.5px rgba(120, 235, 175, 0.35));
+}
+
+/* Exceedance: digits + needle go red while above the effective limit. */
+.eic-gauge.is-exceed .eic-needle { stroke: var(--crit); }
+.eic-gauge.is-exceed .eic-lcd {
+  fill: var(--crit);
+  filter: drop-shadow(0 0 3px rgba(255, 93, 93, 0.55));
+}
+
+.eic-label {
+  margin-top: 1px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--accent-2);
+}
+.eic-unit { color: var(--muted); font-weight: 500; }
+
+/* Compact digital rows: FF / OIL PRESS / START ATTEMPT. */
+.eic-strip {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 2px;
+}
+.eic-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.eic-cell-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+.eic-lcd-sm {
+  min-width: 68px;
+  padding: 2px 8px;
+  text-align: right;
+  font-family: 'Consolas', 'Roboto Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  font-weight: 600;
+  color: #e6f4ec;
+  background: rgba(3, 6, 9, 0.85);
+  border: 1px solid rgba(120, 150, 190, 0.28);
+  border-radius: 4px;
+  box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.5);
+  text-shadow: 0 0 4px rgba(120, 235, 175, 0.3);
+}
+.eic-lcd-sm.is-warn { color: var(--warn); text-shadow: 0 0 4px rgba(227, 179, 65, 0.45); }
+.eic-lcd-sm.is-dim { color: var(--muted); text-shadow: none; }
+.eic-unit-sm {
+  margin-left: 4px;
+  font-size: 9px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+@media (max-width: 1100px) {
+  .eic-dials { gap: 5px; }
+  .eic-lcd-sm { min-width: 56px; }
+}
