@@ -7,6 +7,8 @@
  */
 import { Suspense, useEffect } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { Bloom, EffectComposer, ToneMapping } from '@react-three/postprocessing';
+import { ToneMappingMode } from 'postprocessing';
 import * as THREE from 'three';
 import { useSimStore } from '../store/useSimStore';
 import { CameraRig } from './CameraRig';
@@ -83,6 +85,15 @@ export function EngineScene() {
       <Suspense fallback={null}>
         <EngineModel3D />
       </Suspense>
+
+      {/* Post chain: bloom only lifts genuinely HDR pixels (threshold > 1 —
+          igniter sparks, over-temp glow, the bright exhaust core); everything
+          tone-mapped normal stays untouched. ACES tone mapping moves to the
+          END of the chain (the composer takes over from the renderer). */}
+      <EffectComposer multisampling={4}>
+        <Bloom mipmapBlur luminanceThreshold={1.0} luminanceSmoothing={0.2} intensity={0.85} />
+        <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
+      </EffectComposer>
 
       <PhysicsTicker />
       <CaptureBridge />

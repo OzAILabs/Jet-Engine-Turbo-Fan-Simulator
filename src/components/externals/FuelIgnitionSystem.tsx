@@ -269,15 +269,18 @@ export function FuelIgnitionSystem() {
   );
   const sparkMats = useMemo(
     () =>
-      EXTERNALS.igniterPlugs.map(
-        () =>
-          new THREE.MeshBasicMaterial({
-            color: '#cfe8ff', // electric blue-white
-            transparent: true,
-            opacity: 0,
-            depthWrite: false,
-          }),
-      ),
+      EXTERNALS.igniterPlugs.map(() => {
+        const m = new THREE.MeshBasicMaterial({
+          transparent: true,
+          opacity: 0,
+          depthWrite: false,
+          // HDR electric blue-white: > 1.0 so the bloom pass picks it up and
+          // the spark reads as a real arc flash, not a lit ping-pong ball.
+          toneMapped: false,
+        });
+        m.color.setRGB(2.2, 2.8, 3.6);
+        return m;
+      }),
     [],
   );
   const sparkA = useRef<THREE.Mesh>(null!);
