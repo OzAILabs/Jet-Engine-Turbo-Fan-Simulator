@@ -16,8 +16,9 @@
  * three structural frames — the FAN FRAME behind the fan (its struts continue
  * outward as the bypass fan-frame struts), a MID FRAME at the compressor rear
  * / combustor diffuser, and the TURBINE REAR FRAME behind the last LPT stage.
- * Each frame here is a spoked hub: 6 radial spokes + a steel hub ring, with a
- * small bright ring where a shaft passes through — the bearing.
+ * Each frame here is a spoked hub: 6 radial spokes + a steel hub ring. The
+ * bearings themselves (spinning races, roller cages, oil jets) are live parts
+ * drawn by Bearings.tsx at the BEARINGS stations from engineLayout.ts.
  *
  * Because one shaft literally runs THROUGH the other, you can only appreciate
  * them with the casing peeled away, so we only show the shafts when the view is
@@ -29,8 +30,8 @@
  * Instead each shaft's parent <group> has its rotation.x assigned every frame
  * from useSimStore.getState() inside useFrame (one cheap matrix update). Only
  * the viewMode (which changes rarely) is read reactively to toggle visibility.
- * The frames cost 3 draw calls total: ONE InstancedMesh for all 18 spokes, ONE
- * merged mesh for the 3 hub rings, ONE merged mesh for the 4 bearing rings.
+ * The frames cost 2 draw calls total: ONE InstancedMesh for all 18 spokes and
+ * ONE merged mesh for the 3 hub rings.
  */
 import { useLayoutEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
@@ -48,19 +49,18 @@ interface FrameSpec {
   rOut: number;
   /** Radius of the steel hub ring the spokes radiate from [m]. */
   hubR: number;
-  /** Radii of the bright bearing rings — one per shaft passing this hub [m]. */
-  bearingR: number[];
 }
 
 const FRAMES: FrameSpec[] = [
   // Fan frame: inboard continuation of the bypass fan-frame struts (their
-  // roots sit at r≈0.68 at this same x). Carries the LP-shaft front bearing.
-  { x: -2.0, rOut: 0.65, hubR: 0.2, bearingR: [0.15] },
-  // Mid frame at the HPC exit / diffuser: HP-shaft rear bearing, plus the
-  // intershaft bearing on the LP shaft running through inside it.
-  { x: 0.05, rOut: 0.4, hubR: 0.3, bearingR: [0.25, 0.15] },
+  // roots sit at r≈0.68 at this same x). Houses the LP-shaft thrust bearing.
+  { x: -2.0, rOut: 0.65, hubR: 0.2 },
+  // Mid frame at the HPC exit / diffuser: houses the HP-shaft rear bearing,
+  // plus the LP bearing running through inside it (see BEARINGS in
+  // engineLayout.ts — the live races/rollers are drawn by Bearings.tsx).
+  { x: 0.05, rOut: 0.4, hubR: 0.3 },
   // Turbine rear frame, just aft of the last LPT stage: LP-shaft rear bearing.
-  { x: 2.32, rOut: 0.85, hubR: 0.2, bearingR: [0.15] },
+  { x: 2.32, rOut: 0.85, hubR: 0.2 },
 ];
 
 const SPOKES_PER_FRAME = 6;
@@ -134,28 +134,10 @@ export function Shafts() {
     return merged;
   }, []);
 
-  // 4 bright bearing rings (one per shaft-through-hub), merged likewise.
-  const bearingGeo = useMemo(() => {
-    const parts = FRAMES.flatMap((f) =>
-      f.bearingR.map((r) => {
-        const t = new THREE.TorusGeometry(r, 0.02, 10, 40);
-        t.rotateY(Math.PI / 2);
-        t.translate(f.x, 0, 0);
-        return t;
-      }),
-    );
-    const merged = mergeGeometries(parts);
-    parts.forEach((p) => p.dispose());
-    return merged;
-  }, []);
-
-  // Structural steel for the frames; bright polished race for the bearings.
+  // Structural steel for the frames. (The static bright "bearing rings" that
+  // used to merge here were replaced by the live races in Bearings.tsx.)
   const frameMat = useMemo(
     () => new THREE.MeshStandardMaterial({ color: '#8a9099', metalness: 0.75, roughness: 0.45 }),
-    [],
-  );
-  const bearingMat = useMemo(
-    () => new THREE.MeshStandardMaterial({ color: '#c9d2dc', metalness: 0.95, roughness: 0.2 }),
     [],
   );
 
@@ -197,7 +179,7 @@ export function Shafts() {
         <mesh geometry={hpGeo} material={hpMat} position={[hpCenterX, 0, 0]} frustumCulled={false} />
       </group>
 
-      {/* Static bearing-support frames: spokes + hub rings + bearing rings. */}
+      {/* Static bearing-support frames: spokes + hub rings. */}
       {showFrames && (
         <group>
           <instancedMesh
@@ -207,7 +189,6 @@ export function Shafts() {
             frustumCulled={false}
           />
           <mesh geometry={hubRingGeo} material={frameMat} castShadow={false} frustumCulled={false} />
-          <mesh geometry={bearingGeo} material={bearingMat} castShadow={false} frustumCulled={false} />
         </group>
       )}
     </group>

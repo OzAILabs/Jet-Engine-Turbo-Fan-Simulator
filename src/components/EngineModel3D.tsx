@@ -22,6 +22,7 @@ import { Compressor } from './Compressor';
 import { Combustor } from './Combustor';
 import { Turbine } from './Turbine';
 import { Shafts } from './Shafts';
+import { Bearings } from './Bearings';
 import { Nozzles } from './Nozzles';
 import { FlowParticles } from './FlowParticles';
 import { ExhaustPlume } from './ExhaustPlume';
@@ -116,6 +117,11 @@ export function EngineModel3D() {
           each greeble keeps its own castShadow=false; every component handles
           the four view modes itself (and returns null when exploded). */}
       <group>
+        {/* Live main-shaft bearings (spinning races, roller cages, oil jets).
+            Internals, but mounted here — outside the blanket shadow traverse —
+            so their castShadow=false sticks; they handle all four view modes
+            themselves (null in 'full' and 'exploded'). */}
+        <Bearings />
         <AccessoryGearbox />
         <FuelIgnitionSystem />
         <CompressorBleedSystems />

@@ -209,6 +209,65 @@ export function coreCaseRadiusAt(x: number): number {
   return profile[profile.length - 1][1];
 }
 
+// ===========================================================================
+// MAIN-SHAFT BEARINGS — live races/rollers drawn by components/Bearings.tsx.
+//
+// Stations sit at the Shafts.tsx support frames (fan frame x=-2.0, mid frame
+// x=0.05, turbine rear frame x=2.32); the mid frame carries TWO bearings,
+// offset slightly fore/aft so the two element sets read separately. Radii tuck
+// each bearing between its shaft (LP r=0.12, HP drum r=0.22) and the frame hub
+// tori in Shafts.tsx (fan/rear hubR 0.2, mid hubR 0.3, tube 0.028): the inner
+// race seats just onto its shaft, the outer race just into its hub ring.
+// ===========================================================================
+
+export interface BearingSpec {
+  id: string;
+  /** Axial station [m]. */
+  x: number;
+  /** Spool the inner race is pressed onto (owns its spin + the cage rate). */
+  spool: 'lp' | 'hp';
+  /** 'ball' = thrust bearing (spheres); 'roller' = cylindrical (radial only). */
+  kind: 'ball' | 'roller';
+  /** Centerline radius of the inner race torus [m]. */
+  rInner: number;
+  /** Centerline radius of the outer race torus [m]. */
+  rOuter: number;
+  /** Cross-section (tube) radius of both race tori [m]. */
+  raceTube: number;
+  /** Ball radius, or roller cylinder radius [m]. */
+  elementR: number;
+  /** Roller length along X [m] (ignored for balls). */
+  elementLen: number;
+  /** Number of rolling elements. */
+  count: number;
+}
+
+export const BEARINGS: readonly BearingSpec[] = [
+  // No. 1, fan frame: the LP THRUST bearing — the one BALL bearing (point
+  // contact carries the fan's axial load).
+  { id: 'no1-fan-lp-ball', x: -2.0, spool: 'lp', kind: 'ball', rInner: 0.132, rOuter: 0.172, raceTube: 0.01, elementR: 0.016, elementLen: 0, count: 14 },
+  // No. 3, mid frame (fwd): LP roller running inside the hollow HP drum.
+  { id: 'no3-mid-lp-roller', x: -0.04, spool: 'lp', kind: 'roller', rInner: 0.132, rOuter: 0.172, raceTube: 0.01, elementR: 0.012, elementLen: 0.05, count: 12 },
+  // No. 4, mid frame (aft): HP-spool rear roller, seated under the hub ring.
+  { id: 'no4-mid-hp-roller', x: 0.14, spool: 'hp', kind: 'roller', rInner: 0.232, rOuter: 0.268, raceTube: 0.01, elementR: 0.011, elementLen: 0.055, count: 16 },
+  // No. 5, turbine rear frame: LP rear roller (at x=2.28 so it sits ON the LP
+  // shaft, which ends at lptEnd=2.3 just ahead of the frame plane at 2.32).
+  { id: 'no5-trf-lp-roller', x: 2.28, spool: 'lp', kind: 'roller', rInner: 0.132, rOuter: 0.172, raceTube: 0.01, elementR: 0.012, elementLen: 0.05, count: 12 },
+];
+
+/** ALF clock hours of the oil jets at each bearing (10:00 dies in cutaway). */
+export const BEARING_OIL_JET_CLOCKS: readonly number[] = [2, 6, 10];
+
+/**
+ * Oil-jet nozzle placement: radial standoff outside the outer race + axial
+ * setback forward of the bearing plane [m]. Radial kept small so the mid-fwd
+ * LP jets stay INSIDE the hollow HP drum (inner wall r = 0.22).
+ */
+export const BEARING_OIL_JET_OFFSET = { radial: 0.033, axial: 0.055 } as const;
+
+/** Oil pressure [psi] at which the jets/race glow reach full strength. */
+export const OIL_PRESSURE_FULL_PSI = 30;
+
 export const EXTERNALS = {
   /** Accessory gearbox — under the core at 6:00, axially under the HPC (Avio). */
   agb: { xStart: -1.1, xEnd: 0.05, clock: 6, standoff: 0.18, height: 0.3, width: 0.55 },
