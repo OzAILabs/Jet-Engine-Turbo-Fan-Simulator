@@ -37,7 +37,10 @@ export type ViewMode = 'full' | 'transparent' | 'cutaway' | 'exploded' | 'intern
 export type CameraMode = 'orthographic' | 'perspective';
 /** Exhaust rendering style: realistic translucent gas vs. dramatic bright plume. */
 export type ExhaustStyle = 'volumetric' | 'shader';
-export type CameraPreset = 'iso' | 'fan' | 'compressor' | 'combustor' | 'exhaust' | 'top';
+export type CameraPreset =
+  | 'iso' | 'fan' | 'compressor' | 'combustor' | 'exhaust' | 'top'
+  // Cinematic beauty poses — composed for the perspective camera.
+  | 'hero' | 'intake' | 'exhaust-low';
 
 export type StartSelectorPos = 'NORM' | 'START' | 'CON';
 export type FuelControlPos = 'RUN' | 'CUTOFF';
@@ -130,6 +133,13 @@ export interface SimStore {
   showVelocityVectors: boolean;
   soundEnabled: boolean;
   soundVolume: number;
+  /** Presentation mode: overlays + floor grid hidden AT THEIR RENDER SITES,
+   *  side panels collapsed to hover-reveal edge tabs (CSS `is-presentation`),
+   *  perspective projection forced. The individual show* overlay booleans are
+   *  deliberately left untouched so the user's choices survive a round trip. */
+  presentationMode: boolean;
+  /** Projection to restore when presentation mode is toggled back off. */
+  presentationReturnCameraMode: CameraMode;
 
   // Selection
   selectedStation: StationId | null;
@@ -167,6 +177,7 @@ export interface SimStore {
   toggle: (key: ToggleKey) => void;
   setSoundEnabled: (enabled: boolean) => void;
   setSoundVolume: (volume: number) => void;
+  setPresentationMode: (on: boolean) => void;
 
   selectStation: (id: StationId | null) => void;
   selectSection: (id: string | null) => void;
@@ -244,6 +255,8 @@ export const useSimStore = create<SimStore>((set, get) => ({
   // user gesture (browser autoplay policy), which EngineAudio arms on mount.
   soundEnabled: true,
   soundVolume: 0.55,
+  presentationMode: false,
+  presentationReturnCameraMode: 'orthographic',
 
   selectedStation: null,
   selectedSection: null,
@@ -426,6 +439,30 @@ export const useSimStore = create<SimStore>((set, get) => ({
   toggle: (key) => set((s) => ({ [key]: !s[key] }) as Partial<SimStore>),
   setSoundEnabled: (enabled) => set({ soundEnabled: enabled }),
   setSoundVolume: (volume) => set({ soundVolume: clamp(volume, 0, 1) }),
+  setPresentationMode: (on) =>
+    set((s) => {
+      if (on === s.presentationMode) return {};
+      if (on) {
+        // Remember the user's projection, force perspective (cinematic), and
+        // fly to the hero pose so entering the mode is itself a camera beat.
+        // The show* overlay toggles are NOT touched — components gate on
+        // presentationMode at their render sites, so the user's overlay
+        // choices survive a round trip through presentation mode.
+        return {
+          presentationMode: true,
+          presentationReturnCameraMode: s.cameraMode,
+          cameraMode: 'perspective',
+          cameraCommand: {
+            kind: 'preset',
+            preset: 'hero',
+            focusPoint: null,
+            nonce: s.cameraCommand.nonce + 1,
+          },
+        };
+      }
+      // Restore the projection; leave the camera where the presenter put it.
+      return { presentationMode: false, cameraMode: s.presentationReturnCameraMode };
+    }),
 
   selectStation: (id) => set({ selectedStation: id, selectedSection: null }),
   selectSection: (id) => set({ selectedSection: id, selectedStation: null }),

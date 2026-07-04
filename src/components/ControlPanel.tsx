@@ -59,6 +59,7 @@ export function ControlPanel() {
   const paused = useSimStore((s) => s.paused);
   const soundEnabled = useSimStore((s) => s.soundEnabled);
   const soundVolume = useSimStore((s) => s.soundVolume);
+  const presentationMode = useSimStore((s) => s.presentationMode);
 
   const showStationLabels = useSimStore((s) => s.showStationLabels);
   const showSectionLabels = useSimStore((s) => s.showSectionLabels);
@@ -78,6 +79,7 @@ export function ControlPanel() {
   const resetToCruise = useSimStore((s) => s.resetToCruise);
   const setSoundEnabled = useSimStore((s) => s.setSoundEnabled);
   const setSoundVolume = useSimStore((s) => s.setSoundVolume);
+  const setPresentationMode = useSimStore((s) => s.setPresentationMode);
 
   // Map each toggle key to its live boolean so the list render stays declarative.
   const toggleValues: Record<(typeof TOGGLES)[number]['key'], boolean> = {
@@ -94,6 +96,19 @@ export function ControlPanel() {
   return (
     <div className="panel">
       <div className="panel-title">Controls</div>
+
+      {/* --- Presentation mode ------------------------------------------- */}
+      {/* Prominent: hides overlays + floor grid, collapses the side panels
+          to hover-reveal edge tabs, forces the perspective camera and flies
+          to the cinematic hero pose. Individual overlay checkboxes keep
+          their values and come back exactly as left. */}
+      <button
+        className={`btn presentation-btn${presentationMode ? ' is-active' : ''}`}
+        onClick={() => setPresentationMode(!presentationMode)}
+        title="Clean beauty view: overlays and floor grid off, panels collapse to slim edge tabs (hover to reveal)"
+      >
+        {presentationMode ? 'Exit Presentation' : 'Presentation'}
+      </button>
 
       {/* --- Flight / throttle inputs ------------------------------------ */}
       <div className="panel-section">

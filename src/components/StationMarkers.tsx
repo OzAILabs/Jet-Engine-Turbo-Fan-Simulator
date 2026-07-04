@@ -34,10 +34,17 @@ export function StationMarkers() {
   const showStationLabels = useSimStore((s) => s.showStationLabels);
   const selectedStation = useSimStore((s) => s.selectedStation);
   const exploded = useSimStore((s) => s.viewMode === 'exploded');
+  const presentationMode = useSimStore((s) => s.presentationMode);
 
   // Actions are stable references on the store; grab them once.
   const selectStation = useSimStore((s) => s.selectStation);
   const focusOn = useSimStore((s) => s.focusOn);
+
+  // Presentation mode hides the entire marker layer (spheres, leader lines,
+  // Html labels and cards) — they are diagram scaffolding, not hardware.
+  // We gate HERE instead of flipping showStationLabels, so the user's
+  // overlay checkbox survives a round trip through presentation mode.
+  if (presentationMode) return null;
 
   return (
     <group>

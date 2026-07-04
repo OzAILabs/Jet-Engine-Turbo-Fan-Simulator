@@ -20,8 +20,11 @@ export function SectionLabels() {
   const selectSection = useSimStore((s) => s.selectSection);
   const focusOn = useSimStore((s) => s.focusOn);
   const exploded = useSimStore((s) => s.viewMode === 'exploded');
+  const presentationMode = useSimStore((s) => s.presentationMode);
 
-  if (!showSectionLabels) return null;
+  // Presentation gates here (render site) so showSectionLabels is untouched
+  // and the user's checkbox comes back exactly as they left it.
+  if (presentationMode || !showSectionLabels) return null;
 
   return (
     <>

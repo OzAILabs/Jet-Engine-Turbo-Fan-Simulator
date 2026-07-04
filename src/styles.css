@@ -1574,3 +1574,85 @@ input.slider::-moz-range-thumb {
   stroke: #39424e;
   stroke-width: 1.2;
 }
+
+
+```css
+/* ===========================================================================
+   Presentation mode — `.app.is-presentation` (class set from App.tsx).
+   The two side panel columns slide off-screen leaving an 18px hover-reveal
+   sliver with a glowing grip pill (the "grab tab"); the title fades to a
+   whisper; the disclaimer hides. The bottom-center ENGINE START dock is
+   deliberately untouched so the engine can still be started mid-demo.
+   =========================================================================== */
+
+/* Both directions animate: transition lives on the base column so leaving
+   presentation mode slides the panels back in instead of snapping. */
+.ui-col {
+  transition: transform 0.4s cubic-bezier(0.2, 0.85, 0.25, 1), opacity 0.3s;
+}
+
+.is-presentation .ui-left {
+  transform: translateX(calc(-100% + 18px));
+}
+.is-presentation .ui-right {
+  transform: translateX(calc(100% - 18px));
+}
+.is-presentation .ui-col:not(:hover):not(:focus-within) {
+  opacity: 0.85;
+}
+.is-presentation .ui-left:hover,
+.is-presentation .ui-left:focus-within {
+  transform: translateX(0);
+}
+.is-presentation .ui-right:hover,
+.is-presentation .ui-right:focus-within {
+  transform: translateX(0);
+}
+
+/* Slim vertical grip pill on the exposed edge — the grab-tab affordance.
+   Positioned INSIDE the column (within the visible sliver) so the column's
+   overflow-x: hidden never clips it. */
+.is-presentation .ui-col::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 4px;
+  height: 64px;
+  transform: translateY(-50%);
+  border-radius: 3px;
+  background: var(--accent-dim);
+  box-shadow: 0 0 8px rgba(95, 168, 255, 0.35);
+  pointer-events: none;
+}
+.is-presentation .ui-left::after {
+  right: 6px;
+}
+.is-presentation .ui-right::after {
+  left: 6px;
+}
+
+/* Title fades to a whisper (hover restores it); footer disclaimer hides. */
+.is-presentation .title-block {
+  opacity: 0.22;
+  transition: opacity 0.3s;
+}
+.is-presentation .title-block:hover {
+  opacity: 1;
+}
+.is-presentation .disclaimer {
+  opacity: 0;
+}
+
+/* Prominent Presentation toggle at the top of the Controls panel. */
+.presentation-btn {
+  width: 100%;
+  margin-bottom: 2px;
+  padding: 9px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  border-color: var(--accent-dim);
+  background: rgba(95, 168, 255, 0.08);
+}
+```

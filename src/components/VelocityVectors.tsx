@@ -19,13 +19,15 @@ const FLOW_IDS: StationId[] = ['2', '13', '25', '3', '4', '45', '5', '8', '18'];
 
 export function VelocityVectors() {
   const show = useSimStore((s) => s.showVelocityVectors);
+  const presentationMode = useSimStore((s) => s.presentationMode);
   const stations = useSimStore((s) => s.engine.stations);
 
   // One shared shaft + tip geometry, reused for every arrow.
   const shaftGeo = useMemo(() => new THREE.CylinderGeometry(0.025, 0.025, 1, 8), []);
   const tipGeo = useMemo(() => new THREE.ConeGeometry(0.07, 0.16, 10), []);
 
-  if (!show) return null;
+  // Presentation gates at the render site — showVelocityVectors is untouched.
+  if (presentationMode || !show) return null;
 
   return (
     <group>

@@ -9,7 +9,7 @@
  * store reactively to keep its highlighted/active states in sync.
  */
 import { useSimStore } from '../store/useSimStore';
-import { CAMERA_PRESET_LIST } from '../util/cameraPresets';
+import { CAMERA_PRESET_LIST, CINEMATIC_PRESET_LIST } from '../util/cameraPresets';
 
 export function CameraControlsPanel() {
   // Reactive subscriptions: the active preset highlight and the
@@ -31,6 +31,30 @@ export function CameraControlsPanel() {
       <div className="panel-section">
         <div className="btn-row">
           {CAMERA_PRESET_LIST.map((preset) => {
+            const isActive =
+              cameraCommand.preset === preset.key && cameraCommand.kind !== 'focus';
+            return (
+              <button
+                key={preset.key}
+                className={'btn' + (isActive ? ' is-active' : '')}
+                onClick={() => setCameraPreset(preset.key)}
+              >
+                {preset.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Cinematic beauty poses (hero / intake / exhaust-low). Deliberately
+          always available — not gated to presentation mode: they double as
+          screenshot views for the window.__sim capture bridge, and buttons
+          that appear/disappear per mode make the panel feel modal. They are
+          composed for the perspective camera but degrade fine under ortho. */}
+      <div className="panel-section">
+        <div className="panel-subtitle">Cinematic</div>
+        <div className="btn-row">
+          {CINEMATIC_PRESET_LIST.map((preset) => {
             const isActive =
               cameraCommand.preset === preset.key && cameraCommand.kind !== 'focus';
             return (

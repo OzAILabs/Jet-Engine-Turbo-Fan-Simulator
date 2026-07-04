@@ -10,11 +10,17 @@ import { WarningPanel } from './components/WarningPanel';
 import { CameraControlsPanel } from './components/CameraControlsPanel';
 import { EngineAudio } from './components/EngineAudio';
 import { StartPanel } from './components/StartPanel';
+import { useSimStore } from './store/useSimStore';
 import { DISCLAIMER } from './data/educationalCopy';
 
 export default function App() {
+  // Presentation mode collapses the side panel columns to slim hover-reveal
+  // edge tabs via pure CSS keyed off this root class (see styles.css). The
+  // bottom-center ENGINE START dock is deliberately left untouched.
+  const presentationMode = useSimStore((s) => s.presentationMode);
+
   return (
-    <div className="app">
+    <div className={`app${presentationMode ? ' is-presentation' : ''}`}>
       <EngineAudio />
       <div className="scene-layer">
         <EngineScene />

@@ -57,6 +57,35 @@ export const CAMERA_PRESETS: Record<CameraPreset, CameraPresetDef> = {
     target: ENGINE_CENTER,
     zoom: 38,
   },
+
+  // --- Cinematic poses (presentation mode / beauty shots) ------------------
+  // Composed for the PERSPECTIVE camera: low eye lines, strong diagonals,
+  // camera below the engine axis (the floor sits at y = -2.4, so every eye
+  // height here stays above it). They still resolve under ortho — the `zoom`
+  // is the graceful fallback — and being ordinary presets they are reachable
+  // from the window.__sim capture bridge by key like any other view.
+  hero: {
+    key: 'hero',
+    label: 'Hero (3/4 Low Front)',
+    position: [-8.6, -0.9, 7.2],
+    target: [0.3, 0.1, 0],
+    zoom: 40,
+  },
+  intake: {
+    key: 'intake',
+    label: 'Intake Close-up',
+    // Just off-axis, low, looking slightly up into the spinning fan.
+    position: [AXIS.fanPlane - 3.4, -1.1, 2.0],
+    target: [AXIS.fanPlane + 0.6, 0.15, 0],
+    zoom: 66,
+  },
+  'exhaust-low': {
+    key: 'exhaust-low',
+    label: 'Exhaust (Rear Low)',
+    position: [9.0, -1.3, 4.2],
+    target: [2.7, 0.15, 0],
+    zoom: 50,
+  },
 };
 
 export const CAMERA_PRESET_LIST: CameraPresetDef[] = [
@@ -66,4 +95,11 @@ export const CAMERA_PRESET_LIST: CameraPresetDef[] = [
   CAMERA_PRESETS.combustor,
   CAMERA_PRESETS.exhaust,
   CAMERA_PRESETS.top,
+];
+
+/** Cinematic beauty poses — shown as their own group in the Camera panel. */
+export const CINEMATIC_PRESET_LIST: CameraPresetDef[] = [
+  CAMERA_PRESETS.hero,
+  CAMERA_PRESETS.intake,
+  CAMERA_PRESETS['exhaust-low'],
 ];
