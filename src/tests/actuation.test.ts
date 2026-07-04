@@ -39,6 +39,22 @@ describe('actuation schedule', () => {
     expect(a.vsvOpenFrac).toBeLessThan(0.5);
   });
 
+  it('re-opens the VBVs on a commanded rapid decel (booster-stall protection)', () => {
+    // Cruising high: doors closed on the steady schedule…
+    expect(computeActuation(0.95, 0.95).vbvOpenFrac).toBe(0);
+    // …throttle chopped to idle while the core still spins fast → doors open.
+    const chop = computeActuation(0.95, 0.66);
+    expect(chop.vbvOpenFrac).toBeGreaterThan(0.9);
+    // Small commanded decrements inside the deadband do NOT flutter the doors.
+    expect(computeActuation(0.95, 0.93).vbvOpenFrac).toBe(0);
+    // As the core actually spools down toward the target, the re-open fades…
+    expect(computeActuation(0.75, 0.66).vbvOpenFrac).toBeLessThan(
+      computeActuation(0.9, 0.66).vbvOpenFrac,
+    );
+    // …and the VSVs are unaffected by decel (they follow N2 only).
+    expect(chop.vsvOpenFrac).toBe(computeActuation(0.95).vsvOpenFrac);
+  });
+
   it('moves monotonically with N2 (no schedule reversals)', () => {
     let prevVsv = -1;
     let prevVbv = 2;

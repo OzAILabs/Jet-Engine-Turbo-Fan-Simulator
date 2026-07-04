@@ -320,7 +320,9 @@ export const useSimStore = create<SimStore>((set, get) => ({
         startSeq: syncedSeq,
         autoStartActive: false, // reached idle/running — macro is done
         instruments: buildInstruments(cfg, nextSpool, nextEngine, syncedSeq),
-        actuation: computeActuation(nextSpool.n2),
+        // Pass the commanded N2 so a throttle chop transiently re-opens the
+        // VBVs (booster-stall protection) while the core is still spinning down.
+        actuation: computeActuation(nextSpool.n2, nextEngine.targetN2),
       });
       return;
     }
