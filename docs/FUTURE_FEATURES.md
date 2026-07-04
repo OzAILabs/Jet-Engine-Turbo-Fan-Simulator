@@ -41,35 +41,50 @@ completed, substantially changed, or intentionally deferred.
   pulses, high-power roar, and turbulent tearing.
 - [x] Upgrade lighting with soft self-shadowing, contact grounding, and offline
   studio reflections for physically based metal materials.
-## In Progress
+## Completed (2026-07 "living machinery / glass cockpit / materials" upgrade)
 
-- [ ] Add procedural aerospace PBR materials.
+- [x] **Rotation direction corrected**: both spools now turn clockwise viewed
+  from the rear (real GE90 sense, SPOOL_SPIN_SIGN); turbine blades mirrored so
+  the gas drives the true direction.
+- [x] **FADEC-owned VSV/VBV actuation** (`sim/actuation.ts` + store.actuation):
+  visuals, audio and gauges share one schedule; VSV actuator rods stroke;
+  VBVs transiently re-open on rapid decels (booster-stall protection).
+- [x] **Living machinery**: igniter spark strobes (A/B-aware) + fuel-flow glow
+  on the manifolds; live main-shaft bearings (spinning races, epicyclic roller
+  cages, oil jets keyed to oil pressure); machined rotor disks + drive cones +
+  fan disk with dovetails; AGB inspection pocket with six meshing spur gears,
+  spinning tower/horizontal shafts, pad couplings, and an air-turbine starter
+  wheel that spins only during crank.
+- [x] **Internals view mode** (drive-train X-ray) + camera freed for deep zoom
+  and under-engine inspection.
+- [x] **Glass cockpit**: true 777 EICAS arc gauges (ticks, numerals, boxed
+  digits, amber band, N1 command bug, exceedance latching, FCOM start-limit
+  line preserved); EICAS message stack with master WARNING/CAUTION lights;
+  start-trend strip chart + live compressor map with surge line; pedestal
+  throttle quadrant with draggable lever, guarded fuel switch and fire handle.
+- [x] Procedural aerospace PBR materials (all CanvasTexture, no assets):
+  carbon-twill fan blades with titanium leading edge, brushed titanium
+  compressor, heat-stained nickel turbines, ceramic combustor liner, painted
+  nacelle; blade UVs generated in the loft.
+- [x] Internal rotor disks, structural struts, live bearings, flanges,
+  fasteners, and fuel manifolds. (Stage spacers and air seals still open.)
+- [x] Hot-section appearance corrected: permanent tempering staining, glow
+  reserved for over-temperature events, irregular flickering flame pockets.
+- [x] Bloom postprocessing (HDR-thresholded: sparks, over-temp, exhaust core).
+- [x] Presentation mode: overlays/grid hidden, panels collapse to edge tabs,
+  perspective + cinematic hero/intake/exhaust-low poses. (DoF deferred.)
 
 ## Planned Visual Realism
 
 - [ ] Give cutaway shells physical thickness and finished cut-edge faces.
   Deferred after the first implementation interfered with blade/internal
   animation visibility; revisit with a less intrusive geometry approach.
-- [ ] Complete procedural aerospace PBR material coverage:
-  - Composite fan blades with subtle weave and leading-edge wear.
-  - Brushed titanium compressor stages.
-  - Heat-stained nickel turbine stages.
-  - Ceramic-coated combustor liners.
-  - Painted nacelle with subtle roughness variation.
-- [ ] Add internal rotor disks, stage spacers, structural struts, bearings,
-  seals, flanges, fasteners, and fuel manifolds.
-- [ ] Correct hot-section appearance:
-  - Use heat staining instead of normal-operation visible glow.
-  - Reserve visible red/orange metal glow for over-temperature events.
-  - Replace the cylindrical combustor flame with irregular flame pockets.
+- [ ] Stage spacer rings and rotating air seals (labyrinth) between disks.
+- [ ] Optional depth of field for presentation mode.
 - [ ] Improve rotating assembly motion:
-  - Speed-dependent radial/temporal blade blur.
-  - Rotating drums and shafts.
-  - Subtle startup and shutdown vibration.
-  - Windmilling from flight speed when fuel is off.
-- [ ] Add a clean Realism presentation mode with labels and educational overlays
-  hidden, perspective camera defaults, cinematic presets, and optional depth of
-  field.
+  - Speed-dependent radial/temporal blade blur (a blur disc exists on the fan).
+  - Subtle startup and shutdown vibration (basic sub-idle jitter exists).
+  - Windmilling from flight speed when fuel is off (sim supports it; add cues).
 
 ## Planned Flow and Atmosphere
 
