@@ -19,19 +19,23 @@
  * Geometry from the helpers is centered at the local origin and oriented along
  * X, so each mesh is positioned with its axial CENTER on the engine axis.
  */
-import { useMemo, useRef } from 'react';
+import { useLayoutEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useSimStore } from '../store/useSimStore';
-import { AXIS, RADII, SPOOL_SPIN_SIGN } from '../data/engineLayout';
+import { AXIS, FAN_DISK, RADII, SPOOL_SPIN_SIGN } from '../data/engineLayout';
 import { createTube, createRing } from '../geometry/annularSection';
 import { createFanBladeGeometry } from '../geometry/bladeGeometry';
 import { createCompressorBladeGeometry } from '../geometry/compressorBladeGeometry';
 import { BladeRow } from './BladeRow';
+import { createDiskGeometry } from './RotorDisks';
 import { Spinner } from './Spinner';
 
 /** Number of outlet guide vanes behind the fan (stationary stator row). */
 const OGV_COUNT = 44;
+
+/** Module-level scratch for the dovetail InstancedMesh layout (never per-frame). */
+const dummy = new THREE.Object3D();
 
 export function Fan() {
   const config = useSimStore((s) => s.config);
@@ -47,6 +51,30 @@ export function Fan() {
     () => createTube(RADII.fanHub, RADII.fanHub * 0.95, AXIS.fanBladeWidth),
     [],
   );
+
+  // FAN DISK: the heavy machined LP disk just aft of the spinner base that
+  // the blade roots dovetail into — same bore/web/rim lathe profile family as
+  // the core disks (RotorDisks), beefed up. Its bore hugs the LP shaft; its
+  // rim stands a few mm proud of the tapering hub skin so it reads in every
+  // view mode.
+  const fanDiskGeo = useMemo(
+    () => createDiskGeometry(FAN_DISK.x, FAN_DISK.rimOuter, FAN_DISK.boreInner, FAN_DISK),
+    [],
+  );
+
+  // Dovetail blade-root blocks around the disk rim, one per fan blade, in the
+  // SAME angular slots as the BladeRow blades (phase 0). The radial offset is
+  // baked into the box geometry (like BladeRow's blades) so each instance
+  // only needs an X-rotation.
+  const dovetailGeo = useMemo(() => {
+    const g = new THREE.BoxGeometry(
+      FAN_DISK.dovetail.length, // axial
+      FAN_DISK.dovetail.depth, // radial
+      FAN_DISK.dovetail.width, // tangential
+    );
+    g.translate(0, FAN_DISK.dovetail.r, 0);
+    return g;
+  }, []);
 
   // The 22 big composite fan blades (one geometry, instanced by BladeRow).
   const fanBladeGeo = useMemo(
@@ -109,6 +137,23 @@ export function Fan() {
     [],
   );
 
+  // Lay the dovetail blocks out once around the rim (ONE InstancedMesh — one
+  // draw call). Guard the ref: meshes can be unmounted on view-mode swaps.
+  const dovetailRef = useRef<THREE.InstancedMesh>(null!);
+  useLayoutEffect(() => {
+    const mesh = dovetailRef.current;
+    if (!mesh) return;
+    const step = (Math.PI * 2) / config.numFanBlades;
+    for (let k = 0; k < config.numFanBlades; k++) {
+      dummy.position.set(FAN_DISK.x, 0, 0);
+      dummy.rotation.set(k * step, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(k, dummy.matrix);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+  }, [config.numFanBlades]);
+
   // Drive the spinner + hub spin from the live LP spool angle (no re-render),
   // and fade the motion-blur disc in with fan speed.
   useFrame(() => {
@@ -127,6 +172,15 @@ export function Fan() {
         <Spinner />
         {/* Hub drum centered on the fan plane. */}
         <mesh geometry={hubGeo} material={hubMat} position={[AXIS.fanPlane, 0, 0]} />
+        {/* Fan disk + dovetail blade-root blocks — they ride this same LP
+            group, so they spin with N1 without any extra useFrame loop. */}
+        <mesh geometry={fanDiskGeo} material={hubMat} castShadow={false} />
+        <instancedMesh
+          ref={dovetailRef}
+          args={[dovetailGeo, hubMat, config.numFanBlades]}
+          castShadow={false}
+          frustumCulled={false}
+        />
       </group>
 
       {/* 22 composite fan blades — spin with the LP spool. */}

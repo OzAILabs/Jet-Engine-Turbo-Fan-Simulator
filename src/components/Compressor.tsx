@@ -10,8 +10,9 @@
  *     booster/HPC boundary: the front piece is LP-driven, the rear piece is
  *     HP-driven, each wrapped in a group whose rotation.x is written every
  *     frame from the live spool angle (same non-reactive pattern as BladeRow).
- *     Instanced disk rims ride on each drum at the rotor-row stations so the
- *     spin actually reads through the cutaway.
+ *     Machined rotor disks (bore/web/rim — shared RotorDisks component) ride
+ *     inside each drum at the rotor-row stations, with a drive cone tying the
+ *     drum to its shaft, so the spin reads as one connected rotor.
  *   - Air is squeezed into an ever-smaller annulus as it moves rearward, so
  *     the blades get progressively shorter and stubbier (rising "compactness").
  *   - A surge is when the compressor stalls and airflow breaks down. We fake a
@@ -23,14 +24,16 @@
  * centered at the local origin and span radially along +Y; BladeRow places a
  * row at an axial X and instances + spins the blades for us.
  */
-import { useLayoutEffect, useMemo, useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useSimStore } from '../store/useSimStore';
-import { AXIS, SPOOL_SPIN_SIGN } from '../data/engineLayout';
+import { AXIS, ROTOR, SPOOL_SPIN_SIGN } from '../data/engineLayout';
 import { createCompressorBladeGeometry } from '../geometry/compressorBladeGeometry';
 import { createTube } from '../geometry/annularSection';
 import { BladeRow } from './BladeRow';
+import { RotorDisks } from './RotorDisks';
+import { subIdleJitter } from './rotorShared';
 import { lerp } from '../sim/units';
 
 /** Blade counts per row (kept constant within a section for one shared geo). */
@@ -59,70 +62,6 @@ const drumRadiusAt = (x: number): number =>
 
 /** How far the disk rims stand proud of the drum surface [m]. */
 const RIM_LIP = 0.012;
-
-/** Sub-idle rotor rumble amplitude [m] (~1.5 mm — visible jiggle, not a bounce). */
-const RUMBLE_AMP = 0.0015;
-
-/**
- * Irregular sub-idle rumble: a sum of incommensurate sines, active ONLY while
- * the HP spool is between barely-turning and ~50% — i.e. during start and
- * shutdown — and exactly zero at rest and at/above idle (idle N2 = 0.66).
- */
-function subIdleJitter(t: number, n2: number): number {
-  if (n2 <= 0.001 || n2 >= 0.5) return 0;
-  return (
-    RUMBLE_AMP *
-    (0.5 * Math.sin(37.0 * t) + 0.3 * Math.sin(61.3 * t + 1.7) + 0.2 * Math.sin(23.7 * t + 4.1))
-  );
-}
-
-const dummy = new THREE.Object3D();
-
-/**
- * One InstancedMesh of thin disk rims (tori) — one rim per rotor stage, sitting
- * proud of the drum so the drum's rotation is readable. The base torus has
- * radius 1 and is scaled per instance to each stage's rim radius. Parent the
- * whole mesh inside the spinning drum group; it costs ONE draw call.
- */
-function DiskRims({
-  xs,
-  radii,
-  material,
-}: {
-  xs: number[];
-  radii: number[];
-  material: THREE.Material;
-}) {
-  const meshRef = useRef<THREE.InstancedMesh>(null!);
-  // Unit-radius ring in the Y–Z plane (axis along +X); tube ≈ 0.016 m once scaled.
-  const geo = useMemo(() => {
-    const g = new THREE.TorusGeometry(1, 0.04, 8, 48);
-    g.rotateY(Math.PI / 2);
-    return g;
-  }, []);
-
-  useLayoutEffect(() => {
-    const mesh = meshRef.current;
-    if (!mesh) return;
-    for (let i = 0; i < xs.length; i++) {
-      dummy.position.set(xs[i], 0, 0);
-      dummy.rotation.set(0, 0, 0);
-      dummy.scale.setScalar(radii[i]);
-      dummy.updateMatrix();
-      mesh.setMatrixAt(i, dummy.matrix);
-    }
-    mesh.instanceMatrix.needsUpdate = true;
-  }, [xs, radii]);
-
-  return (
-    <instancedMesh
-      ref={meshRef}
-      args={[geo, material, xs.length]}
-      castShadow={false}
-      frustumCulled={false}
-    />
-  );
-}
 
 export function Compressor() {
   // --- Core drum under the blades ----------------------------------------
@@ -238,6 +177,20 @@ export function Compressor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hpcStages]);
 
+  // Drive cones tying each drum to its shaft so drum + disks + shaft read as
+  // ONE rotating structure: the booster's FRONT disk reaches forward down to
+  // the LP shaft (toward the fan-frame bearing); the HPC's REAR disk reaches
+  // aft down to the HP shaft (under the combustor, toward the mid bearing).
+  // Both render inside their spinning drum groups below.
+  const boosterCones = useMemo(
+    () => [{ diskX: boosterRims.xs[0], shaftX: ROTOR.coneLandingX.booster, shaftR: ROTOR.shaftR.lp }],
+    [boosterRims],
+  );
+  const hpcCones = useMemo(
+    () => [{ diskX: hpcRims.xs[hpcRims.xs.length - 1], shaftX: ROTOR.coneLandingX.hpc, shaftR: ROTOR.shaftR.hp }],
+    [hpcRims],
+  );
+
   // --- Per-frame animation --------------------------------------------------
   // Surge glow: read the live surge margin (0-100) each frame and push the
   // rotor material toward red as it falls below ~25. Drum spin: write the live
@@ -261,16 +214,28 @@ export function Compressor() {
 
   return (
     <group>
-      {/* Booster drum + disk rims — spins with the LP spool. */}
+      {/* Booster drum + machined disks + forward drive cone — LP spool. */}
       <group ref={boosterDrumGroup}>
         <mesh geometry={boosterDrumGeo} material={drumMat} position={[boosterDrumCenterX, 0, 0]} />
-        <DiskRims xs={boosterRims.xs} radii={boosterRims.radii} material={drumMat} />
+        <RotorDisks
+          xs={boosterRims.xs}
+          rimRadii={boosterRims.radii}
+          boreInner={ROTOR.boreInner.lp}
+          coneArms={boosterCones}
+          material={drumMat}
+        />
       </group>
 
-      {/* HPC drum + disk rims — spins with the HP spool. */}
+      {/* HPC drum + machined disks + aft drive cone — HP spool. */}
       <group ref={hpcDrumGroup}>
         <mesh geometry={hpcDrumGeo} material={drumMat} position={[hpcDrumCenterX, 0, 0]} />
-        <DiskRims xs={hpcRims.xs} radii={hpcRims.radii} material={drumMat} />
+        <RotorDisks
+          xs={hpcRims.xs}
+          rimRadii={hpcRims.radii}
+          boreInner={ROTOR.boreInner.hp}
+          coneArms={hpcCones}
+          material={drumMat}
+        />
       </group>
 
       {/* Booster (LPC): LP-driven rotor rows + interleaved stators. */}

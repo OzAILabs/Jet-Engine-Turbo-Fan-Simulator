@@ -268,6 +268,71 @@ export const BEARING_OIL_JET_OFFSET = { radial: 0.033, axial: 0.055 } as const;
 /** Oil pressure [psi] at which the jets/race glow reach full strength. */
 export const OIL_PRESSURE_FULL_PSI = 30;
 
+// ===========================================================================
+// ROTOR INTERNALS — machined disk cross-sections and drive cones.
+// Shared by RotorDisks.tsx (booster/HPC/HPT/LPT disk stacks) and Fan.tsx
+// (fan disk). Proportions are visual, GE90-inspired; bores hug the shafts.
+// ===========================================================================
+
+export const ROTOR = {
+  /** Shaft radii [m] — MUST match the tubes in Shafts.tsx (LP rod / HP drum). */
+  shaftR: { lp: 0.12, hp: 0.22 },
+  /** Disk bore inner radius per spool — just outside the owning shaft [m]. */
+  boreInner: { lp: 0.13, hp: 0.23 },
+  /** Radial depth of the heavy bore ring [m]. */
+  boreRadial: 0.07,
+  /** Axial HALF-thickness of the bore ring [m]. */
+  boreHalf: 0.05,
+  /** Axial HALF-thickness of the thin web [m]. */
+  webHalf: 0.014,
+  /** Axial HALF-thickness of the wide rim [m]. */
+  rimHalf: 0.032,
+  /** How far the rim reaches down below the drum surface [m]. */
+  rimDepth: 0.05,
+  /** Drive-cone shell thickness (axial offset between its two faces) [m]. */
+  coneThickness: 0.025,
+  /** Radial clearance of a drive cone's landing sleeve above its shaft [m]. */
+  coneLanding: 0.005,
+  /**
+   * Axial landing station of each drum section's drive cone on its shaft [m]:
+   * booster FRONT disk → forward to the LP shaft (fan-frame bearing side);
+   * HPC REAR disk → aft under the combustor (mid-bearing side);
+   * HPT FRONT disk → forward under the combustor (meets the HPC cone);
+   * LPT REAR disk → aft to the LP shaft end at the turbine rear frame.
+   */
+  coneLandingX: {
+    booster: AXIS.lpcStart, // -2.45
+    hpc: 0.35,
+    hpt: 0.7,
+    lpt: AXIS.lptEnd, // 2.30
+  },
+} as const;
+
+/**
+ * Fan disk — the heavy LP disk just aft of the spinner base that the fan
+ * blade roots dovetail into (rendered by Fan.tsx inside the LP spool group).
+ */
+export const FAN_DISK = {
+  /** Axial center [m] — fully aft of the spinner so the rim can't poke through it. */
+  x: AXIS.fanPlane + 0.1,
+  /** Bore hugs the LP shaft like every other LP disk. */
+  boreInner: ROTOR.boreInner.lp,
+  /** Rim outer radius [m] — stands a few mm proud of the tapering hub skin. */
+  rimOuter: RADII.fanHub - 0.005,
+  /** Beefier proportions than a core disk (same lathe profile family). */
+  boreRadial: 0.08,
+  boreHalf: 0.09,
+  webHalf: 0.03,
+  rimHalf: 0.07,
+  rimDepth: 0.06,
+  /**
+   * Dovetail blade-root blocks around the rim (count = config.numFanBlades).
+   * depth keeps the block tops at r=0.365 — inside the motion-blur disc's
+   * inner edge (fanHub*1.05 = 0.3675) so they never poke through it.
+   */
+  dovetail: { width: 0.055, depth: 0.04, length: 0.16, r: RADII.fanHub - 0.005 },
+} as const;
+
 export const EXTERNALS = {
   /** Accessory gearbox — under the core at 6:00, axially under the HPC (Avio). */
   agb: { xStart: -1.1, xEnd: 0.05, clock: 6, standoff: 0.18, height: 0.3, width: 0.55 },
