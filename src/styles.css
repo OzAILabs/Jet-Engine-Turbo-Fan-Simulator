@@ -845,3 +845,96 @@ input.slider::-moz-range-thumb {
   font-style: italic;
 }
 .slider:disabled { opacity: 0.35; }
+
+/* === EICAS message stack + master lights (WarningPanel) ==================== */
+
+/* Glass-cockpit display text: plain mono digits/caps, faint phosphor glow. */
+.eicas-stack,
+.eicas-master,
+.eicas-recall {
+  font-family: 'Consolas', 'Roboto Mono', 'Segoe UI Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.eicas-masters {
+  display: flex;
+  gap: 6px;
+  margin: 4px 0 8px;
+}
+
+/* Korry-style push light: dark engraved cap; bright + glowing when lit. */
+.eicas-master {
+  flex: 1;
+  padding: 7px 0 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-align: center;
+  color: #4a4f57;
+  background: #14171c;
+  border: 1px solid #2a2f37;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 0.1s, background 0.1s, box-shadow 0.1s;
+}
+.eicas-master.is-warning.is-lit {
+  color: #fff;
+  background: #7a1512;
+  border-color: #ff5d5d;
+  box-shadow: 0 0 10px rgba(255, 93, 93, 0.55), inset 0 0 6px rgba(255, 93, 93, 0.4);
+  animation: eicas-pulse 1s steps(2, jump-none) infinite;
+}
+.eicas-master.is-caution.is-lit {
+  color: #1a1405;
+  background: #b8892b;
+  border-color: #e3b341;
+  box-shadow: 0 0 10px rgba(227, 179, 65, 0.5), inset 0 0 6px rgba(227, 179, 65, 0.4);
+}
+@keyframes eicas-pulse {
+  50% {
+    box-shadow: 0 0 16px rgba(255, 93, 93, 0.85), inset 0 0 8px rgba(255, 93, 93, 0.55);
+  }
+}
+
+.eicas-recall {
+  padding: 7px 10px 6px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: #8a93a0;
+  background: #14171c;
+  border: 1px solid #2a2f37;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.eicas-recall:hover {
+  color: #cfd6dd;
+  border-color: #3a4149;
+}
+
+/* Message stack: EICAS colors carried by TEXT, priority-ordered by caller. */
+.eicas-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.eicas-msg {
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1.45;
+  text-shadow: 0 0 6px rgba(120, 200, 160, 0.08); /* faint CRT phosphor */
+}
+.eicas-msg.is-warning {
+  color: #ff5d5d;
+  text-shadow: 0 0 7px rgba(255, 93, 93, 0.35);
+}
+.eicas-msg.is-caution {
+  color: #e3b341;
+  text-shadow: 0 0 7px rgba(227, 179, 65, 0.3);
+}
+.eicas-msg.is-advisory {
+  color: #cfd6dd;
+}
+.eicas-msg.is-ok {
+  color: #56c98a;
+}

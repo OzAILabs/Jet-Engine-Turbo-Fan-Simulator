@@ -1,71 +1,120 @@
 /**
- * WarningPanel
+ * WarningPanel — a 777-style EICAS message stack with master lights.
  *
- * A plain DOM panel (lives in the HTML overlay, NOT inside the 3D canvas) that
- * surfaces the engine model's active warnings to the student.
+ * Messages come from three feeds and are merged into one prioritized stack,
+ * exactly like the real display orders them:
+ *   WARNING  (red)    engine.warnings severity 'critical', plus start faults
+ *                     that represent limit exceedances (hot start / EGT).
+ *   CAUTION  (amber)  engine.warnings severity 'caution', other start faults,
+ *                     and the rapid-throttle surge-margin transient note.
+ *   ADVISORY (white)  engine.warnings severity 'info'.
  *
- * It subscribes reactively to just three narrow store slices:
- *   - engine.warnings   the list of warnings produced by the steady solution
- *   - transientActive   true while a rapid throttle change is eating surge margin
- *   - surgeMargin       the live surge margin (read so the panel re-renders as it
- *                       moves; the transient note tells students to watch it)
+ * MASTER WARNING / MASTER CAUTION lights sit above the stack (Korry-style
+ * push-to-cancel): a light comes on whenever a message of its class appears
+ * that has not been acknowledged; PUSHING the lit light cancels (acknowledges
+ * the current set — the messages stay in the stack, the light goes out); a NEW
+ * message re-lights it. RECALL clears all acknowledgements so the lights
+ * re-assert — the recall/cancel cycle real crews use.
  *
- * Because each selector is narrow, unrelated UI changes (camera, view mode,
- * slider drags that do not change warnings) will not re-render this panel.
- *
- * Severity maps to a CSS modifier on each .warn row:
- *   caution  -> .is-caution
- *   critical -> .is-critical
- *   info     -> (plain .warn, no modifier)
- *
- * When nothing is wrong (no warnings AND no active transient) we show a single
- * reassuring "All parameters nominal." row using the .is-ok modifier.
+ * Subscriptions stay narrow (warnings / fault / transient slices only), so
+ * unrelated UI changes never re-render this panel.
  */
+import { useState } from 'react';
 import { useSimStore } from '../store/useSimStore';
-import type { WarningSeverity } from '../sim/types';
 
-/**
- * Build the className for a single warning row from its severity. Critical and
- * caution get a modifier class; info warnings render as a plain .warn row.
- */
-function warnClass(severity: WarningSeverity): string {
-  if (severity === 'critical') return 'warn is-critical';
-  if (severity === 'caution') return 'warn is-caution';
-  return 'warn';
+type MsgClass = 'warning' | 'caution' | 'advisory';
+
+interface EicasMessage {
+  id: string;
+  cls: MsgClass;
+  text: string;
 }
+
+/** Start-fault kinds that are limit exceedances → red WARNING class. */
+const FAULT_WARNING_KINDS = new Set(['hot', 'egtExceedance']);
+
+const CLS_ORDER: Record<MsgClass, number> = { warning: 0, caution: 1, advisory: 2 };
 
 export function WarningPanel() {
   // Reactive subscriptions: only re-render when one of these slices changes.
   const warnings = useSimStore((s) => s.engine.warnings);
+  const fault = useSimStore((s) => s.startSeq.fault);
   const transientActive = useSimStore((s) => s.transientActive);
-  // Subscribing to surgeMargin keeps the panel live while a transient is active
-  // (the transient note asks the student to watch this value as it changes).
   const surgeMargin = useSimStore((s) => s.surgeMargin);
 
-  // "Everything is fine" only when there is nothing to report at all.
-  const allNominal = warnings.length === 0 && !transientActive;
+  // Acknowledged message ids: cancelling a master light acks the messages of
+  // that class that are CURRENTLY displayed; a new id re-lights the master.
+  const [acked, setAcked] = useState<ReadonlySet<string>>(new Set());
+
+  // --- Merge the three feeds into one prioritized stack ---------------------
+  const stack: EicasMessage[] = warnings.map((w) => ({
+    id: w.id,
+    cls: w.severity === 'critical' ? 'warning' : w.severity === 'caution' ? 'caution' : 'advisory',
+    text: w.message,
+  }));
+  if (fault) {
+    stack.push({
+      id: `fault-${fault.kind}`,
+      cls: FAULT_WARNING_KINDS.has(fault.kind) ? 'warning' : 'caution',
+      text: fault.message,
+    });
+  }
+  if (transientActive) {
+    stack.push({
+      id: 'transient-surge',
+      cls: 'caution',
+      text: `Throttle transient — surge margin ${surgeMargin.toFixed(0)}%`,
+    });
+  }
+  stack.sort((a, b) => CLS_ORDER[a.cls] - CLS_ORDER[b.cls]);
+
+  const unackedOf = (cls: MsgClass) => stack.some((m) => m.cls === cls && !acked.has(m.id));
+  const masterWarning = unackedOf('warning');
+  const masterCaution = unackedOf('caution');
+
+  /** Push-to-cancel: acknowledge every currently-displayed message of a class. */
+  const cancel = (cls: MsgClass) => {
+    setAcked((prev) => {
+      const next = new Set(prev);
+      for (const m of stack) if (m.cls === cls) next.add(m.id);
+      return next;
+    });
+  };
+  /** RECALL: drop all acknowledgements so active messages re-assert. */
+  const recall = () => setAcked(new Set());
 
   return (
     <div className="panel">
-      <div className="panel-title">Warnings</div>
+      <div className="panel-title">EICAS — Warnings</div>
 
-      <div className="warns">
-        {/* One row per model warning, styled by severity. */}
-        {warnings.map((w) => (
-          <div key={w.id} className={warnClass(w.severity)}>
-            {w.message}
+      {/* Master lights: push a LIT light to cancel; RECALL re-asserts. */}
+      <div className="eicas-masters">
+        <button
+          className={`eicas-master is-warning${masterWarning ? ' is-lit' : ''}`}
+          onClick={() => cancel('warning')}
+          title="Push to cancel master warning"
+        >
+          WARNING
+        </button>
+        <button
+          className={`eicas-master is-caution${masterCaution ? ' is-lit' : ''}`}
+          onClick={() => cancel('caution')}
+          title="Push to cancel master caution"
+        >
+          CAUTION
+        </button>
+        <button className="eicas-recall" onClick={recall} title="Re-assert acknowledged messages">
+          RECALL
+        </button>
+      </div>
+
+      <div className="eicas-stack">
+        {stack.map((m) => (
+          <div key={m.id} className={`eicas-msg is-${m.cls}`}>
+            {m.text}
           </div>
         ))}
-
-        {/* A rapid throttle change temporarily erodes surge margin; flag it. */}
-        {transientActive ? (
-          <div className="warn is-caution">
-            Rapid throttle transient - watch surge margin ({surgeMargin.toFixed(0)}%).
-          </div>
-        ) : null}
-
-        {/* Nothing wrong: a single reassuring row. */}
-        {allNominal ? <div className="warn is-ok">All parameters nominal.</div> : null}
+        {stack.length === 0 ? <div className="eicas-msg is-ok">ALL PARAMETERS NOMINAL</div> : null}
       </div>
     </div>
   );
