@@ -62,6 +62,12 @@ export function createBladeGeometry(params: BladeParams): THREE.BufferGeometry {
   const loopLen = 2 * nChord - 2;
 
   const positions: number[] = [];
+  // UVs: u = chordwise (0 = LEADING edge, 1 = trailing edge), v = spanwise
+  // (0 = root, 1 = tip) — exactly the (u, f) pair the loft loop walks. Upper
+  // and lower surfaces share the same chordwise u, so a texture's leading
+  // columns wrap BOTH faces of the leading edge (used by the fan blade's
+  // titanium-sheath strip in src/materials/coldSection.ts).
+  const uvs: number[] = [];
 
   const pushPoint = (f: number, u: number, side: 1 | -1) => {
     const r = THREE.MathUtils.lerp(radiusInner, radiusOuter, f);
@@ -83,6 +89,7 @@ export function createBladeGeometry(params: BladeParams): THREE.BufferGeometry {
     const x = xBase + dx * s + nx * off;
     const z = dz * s + nz * off;
     positions.push(x, r, z);
+    uvs.push(u, f);
   };
 
   // Emit all rings.
@@ -125,6 +132,7 @@ export function createBladeGeometry(params: BladeParams): THREE.BufferGeometry {
     cz /= loopLen;
     const centerIdx = positions.length / 3;
     positions.push(cx, cy, cz);
+    uvs.push(0.5, j === 0 ? 0 : 1); // cap centroid: mid-chord at root/tip v
     for (let k = 0; k < loopLen; k++) {
       const a = start + k;
       const b = start + ((k + 1) % loopLen);
@@ -137,6 +145,7 @@ export function createBladeGeometry(params: BladeParams): THREE.BufferGeometry {
 
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
   geometry.computeBoundingSphere();

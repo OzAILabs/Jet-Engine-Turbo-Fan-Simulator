@@ -31,6 +31,7 @@ import { useSimStore } from '../store/useSimStore';
 import { AXIS, ROTOR, SPOOL_SPIN_SIGN } from '../data/engineLayout';
 import { createCompressorBladeGeometry } from '../geometry/compressorBladeGeometry';
 import { createTube } from '../geometry/annularSection';
+import { createBrushedTitaniumMaterial } from '../materials/coldSection';
 import { BladeRow } from './BladeRow';
 import { RotorDisks } from './RotorDisks';
 import { subIdleJitter } from './rotorShared';
@@ -81,10 +82,9 @@ export function Compressor() {
   );
   const boosterDrumCenterX = (AXIS.lpcStart + DRUM_SPLIT_X) / 2;
   const hpcDrumCenterX = (DRUM_SPLIT_X + AXIS.hpcEnd) / 2;
-  const drumMat = useMemo(
-    () => new THREE.MeshStandardMaterial({ color: '#8893a3', metalness: 0.9, roughness: 0.35 }),
-    [],
-  );
+  // Brushed-titanium drum skin (procedural streak roughnessMap; shared with
+  // RotorDisks so the disk stack reads as the same machined metal).
+  const drumMat = useMemo(() => createBrushedTitaniumMaterial({ color: '#8893a3', roughness: 0.35 }), []);
 
   // The two spinning drum groups, driven non-reactively in useFrame below.
   const boosterDrumGroup = useRef<THREE.Group>(null!);
@@ -93,59 +93,22 @@ export function Compressor() {
   // --- Shared materials ---------------------------------------------------
   // Rotors share ONE material so a single emissive write drives the surge
   // glow on every rotor row across both the booster and the HPC.
+  // Brushed titanium (factory emissive starts BLACK — the per-frame surge
+  // write below keeps mutating rotorMat.emissive / emissiveIntensity as-is).
   const rotorMat = useMemo(
-    () => new THREE.MeshStandardMaterial({ color: '#95a0b0', metalness: 0.85, roughness: 0.3 }),
+    () => createBrushedTitaniumMaterial({ color: '#b9c2cc', roughness: 0.32, metalness: 0.9 }),
     [],
   );
   const statorMat = useMemo(
-    () => new THREE.MeshStandardMaterial({ color: '#6f7785', metalness: 0.7, roughness: 0.45 }),
+    () => createBrushedTitaniumMaterial({ color: '#6f7785', roughness: 0.45, metalness: 0.7 }),
     [],
   );
 
-  // --- Booster (LPC) blade geometries ------------------------------------
-  // 4 rotor rows packed into the aft LPC span (see BOOSTER_ROTOR_FRONT). The tip
-  // radius TAPERS 0.61 -> 0.54 front-to-rear so the blades ride ~0.03 m inside
-  // the tapering core casing (coreLpcOuter 0.67 -> 0.56) instead of poking
-  // through it — and so the core annulus visibly narrows as the air compresses.
-  // compactness also ramps 0.0 -> 0.4 to stubbify the airfoils. One geometry per
-  // stage index, reused by that stage's rotor and its interleaved stator.
+  // Even axial spacing helpers for the rotor rows of each section. Declared
+  // BEFORE the blade-geometry memos: each stage now roots its blades at the
+  // LOCAL drum surface, so the geometry builders need boosterX/hpcX.
   const boosterStages = useSimStore.getState().config.boosterStages; // 4
-  const boosterGeos = useMemo(() => {
-    const geos: THREE.BufferGeometry[] = [];
-    for (let i = 0; i < boosterStages; i++) {
-      const t = boosterStages > 1 ? i / (boosterStages - 1) : 0;
-      geos.push(
-        createCompressorBladeGeometry({
-          hubRadius: 0.42,
-          tipRadius: lerp(0.61, 0.54, t),
-          compactness: lerp(0.0, 0.4, t),
-        }),
-      );
-    }
-    return geos;
-  }, [boosterStages]);
-
-  // --- HPC blade geometries ----------------------------------------------
-  // 9 rotor rows over [hpcStart, hpcEnd]; compactness ramps 0.45 -> 1.0 (very
-  // stubby late stages), hub grows 0.36 -> 0.40, tip shrinks 0.50 -> 0.42 as
-  // the annulus closes down.
   const hpcStages = useSimStore.getState().config.hpcStages; // 9
-  const hpcGeos = useMemo(() => {
-    const geos: THREE.BufferGeometry[] = [];
-    for (let i = 0; i < hpcStages; i++) {
-      const t = hpcStages > 1 ? i / (hpcStages - 1) : 0;
-      geos.push(
-        createCompressorBladeGeometry({
-          hubRadius: lerp(0.36, 0.4, t),
-          tipRadius: lerp(0.5, 0.42, t),
-          compactness: lerp(0.45, 1.0, t),
-        }),
-      );
-    }
-    return geos;
-  }, [hpcStages]);
-
-  // Even axial spacing helpers for the rotor rows of each section.
   const boosterX = (i: number) =>
     boosterStages > 1
       ? lerp(BOOSTER_ROTOR_FRONT, AXIS.lpcEnd, i / (boosterStages - 1))
@@ -154,6 +117,54 @@ export function Compressor() {
     hpcStages > 1
       ? lerp(AXIS.hpcStart, AXIS.hpcEnd, i / (hpcStages - 1))
       : (AXIS.hpcStart + AXIS.hpcEnd) / 2;
+
+  // Blade roots sink a hair BELOW the local drum skin so no root ever floats
+  // above the tapering drum (the old fixed hub radii left the late-HPC roots
+  // hovering ~0.06 m clear of it). Tip radii are untouched — clearance-tuned.
+  const HUB_EMBED = 0.015;
+
+  // --- Booster (LPC) blade geometries ------------------------------------
+  // 4 rotor rows packed into the aft LPC span (see BOOSTER_ROTOR_FRONT). The tip
+  // radius TAPERS 0.61 -> 0.54 front-to-rear so the blades ride ~0.03 m inside
+  // the tapering core casing (coreLpcOuter 0.67 -> 0.56) instead of poking
+  // through it — and so the core annulus visibly narrows as the air compresses.
+  // compactness also ramps 0.0 -> 0.4 to stubbify the airfoils. One geometry per
+  // stage index, reused by that stage's rotor and its interleaved stator.
+  const boosterGeos = useMemo(() => {
+    const geos: THREE.BufferGeometry[] = [];
+    for (let i = 0; i < boosterStages; i++) {
+      const t = boosterStages > 1 ? i / (boosterStages - 1) : 0;
+      geos.push(
+        createCompressorBladeGeometry({
+          hubRadius: drumRadiusAt(boosterX(i)) - HUB_EMBED,
+          tipRadius: lerp(0.61, 0.54, t),
+          compactness: lerp(0.0, 0.4, t),
+        }),
+      );
+    }
+    return geos;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boosterStages]);
+
+  // --- HPC blade geometries ----------------------------------------------
+  // 9 rotor rows over [hpcStart, hpcEnd]; compactness ramps 0.45 -> 1.0 (very
+  // stubby late stages), tip shrinks 0.50 -> 0.42 as the annulus closes down.
+  // Hub radius now follows the drum skin at each stage station.
+  const hpcGeos = useMemo(() => {
+    const geos: THREE.BufferGeometry[] = [];
+    for (let i = 0; i < hpcStages; i++) {
+      const t = hpcStages > 1 ? i / (hpcStages - 1) : 0;
+      geos.push(
+        createCompressorBladeGeometry({
+          hubRadius: drumRadiusAt(hpcX(i)) - HUB_EMBED,
+          tipRadius: lerp(0.5, 0.42, t),
+          compactness: lerp(0.45, 1.0, t),
+        }),
+      );
+    }
+    return geos;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hpcStages]);
 
   // --- Disk-rim stations ----------------------------------------------------
   // One rim per rotor row, just proud of the drum surface at that station.

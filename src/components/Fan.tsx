@@ -27,6 +27,7 @@ import { AXIS, FAN_DISK, RADII, SPOOL_SPIN_SIGN } from '../data/engineLayout';
 import { createTube, createRing } from '../geometry/annularSection';
 import { createFanBladeGeometry } from '../geometry/bladeGeometry';
 import { createCompressorBladeGeometry } from '../geometry/compressorBladeGeometry';
+import { createFanBladeMaterial } from '../materials/coldSection';
 import { BladeRow } from './BladeRow';
 import { createDiskGeometry } from './RotorDisks';
 import { Spinner } from './Spinner';
@@ -104,17 +105,9 @@ export function Fan() {
   );
 
   // --- Materials (built once, reused) -------------------------------------
-  // Dark composite look for the big fan blades.
-  const bladeMat = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: '#2b2f36',
-        metalness: 0.55,
-        roughness: 0.5,
-        side: THREE.DoubleSide,
-      }),
-    [],
-  );
+  // Carbon-twill composite + titanium leading-edge sheath for the big fan
+  // blades — procedural CanvasTextures, see src/materials/coldSection.ts.
+  const bladeMat = useMemo(() => createFanBladeMaterial(), []);
 
   // Spinner + hub share a slightly lighter, more metallic hub material.
   const hubMat = useMemo(

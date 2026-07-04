@@ -19,6 +19,7 @@ import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { createNacelleShell, createBypassDuctInner } from '../geometry/nacelleGeometry';
 import { CUTAWAY } from '../geometry/annularSection';
+import { createPaintedNacelleMaterial } from '../materials/coldSection';
 import { CutawayEdges } from './CutawayEdges';
 import { useSimStore } from '../store/useSimStore';
 
@@ -45,18 +46,11 @@ export function Nacelle() {
   );
 
   // --- Material (created once, tweaked per view mode) ----------------------
-  // A single shared standard "metal" material. We adjust its transparency to
-  // match the active view mode each render rather than allocating new materials.
-  const material = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: new THREE.Color('#c9d2dc'),
-        metalness: 0.65,
-        roughness: 0.4,
-        side: THREE.DoubleSide, // thin shell with a wrap-around lip: light both faces
-      }),
-    [],
-  );
+  // Painted-cowl PBR material (procedural mottled roughnessMap — see
+  // src/materials/coldSection.ts). Still ONE shared MeshStandardMaterial: the
+  // view-mode switch below keeps mutating transparent/opacity/depthWrite/side
+  // on it exactly as before.
+  const material = useMemo(() => createPaintedNacelleMaterial(), []);
   // Decide which geometry and material settings to use for the current mode.
   // We mutate the shared material's transparency flags directly inside this
   // memo so they stay in sync with viewMode without creating new materials.
