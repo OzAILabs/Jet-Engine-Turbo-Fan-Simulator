@@ -29,7 +29,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useSimStore } from '../store/useSimStore';
 import { BladeRow } from './BladeRow';
-import { AXIS, RADII, SPOOL_SPIN_SIGN } from '../data/engineLayout';
+import { AXIS, RADII, SPOOL_SPIN_SIGN, coreCaseRadiusAt } from '../data/engineLayout';
 import { createTube } from '../geometry/annularSection';
 import { createTurbineBladeGeometry } from '../geometry/turbineBladeGeometry';
 import { temperatureColor, heatFraction } from '../util/colorScale';
@@ -47,6 +47,9 @@ const drumRadiusAt = (x: number): number =>
 
 /** How far the disk rims stand proud of the drum surface [m]. */
 const RIM_LIP = 0.012;
+
+/** Radial gap between an LPT blade tip and the flaring core casing above it. */
+const LPT_TIP_CLEARANCE = 0.025;
 
 /** Sub-idle rotor rumble amplitude [m] (~1.5 mm — visible jiggle, not a bounce). */
 const RUMBLE_AMP = 0.0015;
@@ -215,9 +218,17 @@ export function Turbine() {
       const t = lptStages > 1 ? i / (lptStages - 1) : 0;
       const growth = lerp(0.3, 1.0, t);
       const hubRadius = lerp(0.45, 0.5, t);
-      // Flares from the HPT-exit radius (~0.60) out to the big last-stage tip,
-      // giving the LPT its distinctive growing rear cone.
-      const tipRadius = lerp(0.6, RADII.lptOuter, t); // 0.60 -> 0.88
+      // Flares from the HPT-exit radius (~0.60) out toward the big last-stage
+      // tip (lptOuter) — the LPT's distinctive growing rear cone. BUT each
+      // stage's geometry is shared by its rotor AND the NGV stator 0.3·slot
+      // FORWARD of it, where the flaring casing is smaller — so cap the tip
+      // against the local casing radius at the stator station (minus tip
+      // clearance) or the late-stage blades poke through the case.
+      const statorX = AXIS.lptStart + slot * (i + 0.5) - slot * 0.3;
+      const tipRadius = Math.min(
+        lerp(0.6, RADII.lptOuter, t),
+        coreCaseRadiusAt(statorX) - LPT_TIP_CLEARANCE,
+      );
       const geometry = createTurbineBladeGeometry({ hubRadius, tipRadius, growth });
       const x = AXIS.lptStart + slot * (i + 0.5);
       stages.push({ geometry, x });
