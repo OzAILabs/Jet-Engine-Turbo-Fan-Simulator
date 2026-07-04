@@ -23,7 +23,7 @@ import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useSimStore } from '../store/useSimStore';
-import { AXIS, RADII } from '../data/engineLayout';
+import { AXIS, RADII, SPOOL_SPIN_SIGN } from '../data/engineLayout';
 import { createTube, createRing } from '../geometry/annularSection';
 import { createFanBladeGeometry } from '../geometry/bladeGeometry';
 import { createCompressorBladeGeometry } from '../geometry/compressorBladeGeometry';
@@ -113,7 +113,7 @@ export function Fan() {
   // and fade the motion-blur disc in with fan speed.
   useFrame(() => {
     const { spool } = useSimStore.getState();
-    spoolGroup.current.rotation.x = spool.lpAngle;
+    spoolGroup.current.rotation.x = SPOOL_SPIN_SIGN * spool.lpAngle;
     if (blurMatRef.current) {
       blurMatRef.current.opacity = THREE.MathUtils.clamp((spool.n1 - 0.25) * 0.7, 0, 0.5);
     }

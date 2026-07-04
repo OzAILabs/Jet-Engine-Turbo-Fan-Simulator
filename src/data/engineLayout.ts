@@ -12,6 +12,20 @@ import type { StationId } from '../sim/types';
 
 export const SCENE_SCALE = 1; // 1 unit == 1 meter
 
+/**
+ * Rotation sense of BOTH spools about +X (the engine axis points aft, inlet
+ * at -X). The real GE90's LP and HP rotors turn CLOCKWISE viewed from the
+ * REAR — i.e. counterclockwise seen from the front — which is NEGATIVE
+ * rotation about our +X axis.
+ *
+ * The blade geometry agrees with this sense: rotor blades are cambered with
+ * the concave (pressure) face pointing aft-and-into-rotation, so spun this
+ * way they push air aft. Flipping this sign alone makes every rotor "paddle
+ * backwards" (air would be shoved out the inlet); the turbine blade preset is
+ * mirrored to match (the hot gas visibly drives this direction).
+ */
+export const SPOOL_SPIN_SIGN = -1;
+
 // --- Radii (meters) -------------------------------------------------------
 export const RADII = {
   spinnerTip: 0.02,

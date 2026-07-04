@@ -13,6 +13,7 @@ import { useLayoutEffect, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useSimStore } from '../store/useSimStore';
+import { SPOOL_SPIN_SIGN } from '../data/engineLayout';
 
 export type SpoolDriver = 'lp' | 'hp' | null;
 
@@ -62,7 +63,7 @@ export function BladeRow({
     if (!spin) return;
     const { spool } = useSimStore.getState();
     const angle = spin === 'lp' ? spool.lpAngle : spool.hpAngle;
-    groupRef.current.rotation.x = direction * angle;
+    groupRef.current.rotation.x = SPOOL_SPIN_SIGN * direction * angle;
   });
 
   return (

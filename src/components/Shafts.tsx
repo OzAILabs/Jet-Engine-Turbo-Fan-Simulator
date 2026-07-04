@@ -37,7 +37,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { useSimStore } from '../store/useSimStore';
-import { AXIS } from '../data/engineLayout';
+import { AXIS, SPOOL_SPIN_SIGN } from '../data/engineLayout';
 import { createTube } from '../geometry/annularSection';
 
 /** The three bearing-support frames (axial station, spoke reach, ring sizes). */
@@ -181,8 +181,8 @@ export function Shafts() {
   // Drive both shafts from the live spool angles (non-reactive read).
   useFrame(() => {
     const { spool } = useSimStore.getState();
-    lpGroup.current.rotation.x = spool.lpAngle;
-    hpGroup.current.rotation.x = spool.hpAngle;
+    lpGroup.current.rotation.x = SPOOL_SPIN_SIGN * spool.lpAngle;
+    hpGroup.current.rotation.x = SPOOL_SPIN_SIGN * spool.hpAngle;
   });
 
   return (

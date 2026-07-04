@@ -27,7 +27,7 @@ import { useLayoutEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useSimStore } from '../store/useSimStore';
-import { AXIS } from '../data/engineLayout';
+import { AXIS, SPOOL_SPIN_SIGN } from '../data/engineLayout';
 import { createCompressorBladeGeometry } from '../geometry/compressorBladeGeometry';
 import { createTube } from '../geometry/annularSection';
 import { BladeRow } from './BladeRow';
@@ -252,8 +252,8 @@ export function Compressor() {
     rotorMat.emissiveIntensity = intensity;
 
     // Booster drum rides the LP spool; HPC drum rides the (faster) HP spool.
-    boosterDrumGroup.current.rotation.x = spool.lpAngle;
-    hpcDrumGroup.current.rotation.x = spool.hpAngle;
+    boosterDrumGroup.current.rotation.x = SPOOL_SPIN_SIGN * spool.lpAngle;
+    hpcDrumGroup.current.rotation.x = SPOOL_SPIN_SIGN * spool.hpAngle;
     const jitter = subIdleJitter(clock.elapsedTime, spool.n2);
     boosterDrumGroup.current.position.y = jitter;
     hpcDrumGroup.current.position.y = jitter;

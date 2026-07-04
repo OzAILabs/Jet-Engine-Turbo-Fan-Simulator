@@ -19,7 +19,7 @@ import { useMemo, useRef, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useSimStore } from '../store/useSimStore';
-import { AXIS } from '../data/engineLayout';
+import { AXIS, SPOOL_SPIN_SIGN } from '../data/engineLayout';
 import { temperatureColor } from '../util/colorScale';
 
 // --- Tunables -------------------------------------------------------------
@@ -145,7 +145,8 @@ export function FlowParticles() {
       sampleLUT(coreLUT, phase, out);
       // The LUT stores the swirl radius in its z component; spin it around X.
       const r = out.z;
-      const a = coreAngles[index] + phase * 6.0; // gentle swirl down the path
+      // Gentle swirl down the path, in the rotors' actual rotation sense.
+      const a = coreAngles[index] + SPOOL_SPIN_SIGN * phase * 6.0;
       out.set(out.x, Math.sin(a) * r, Math.cos(a) * r);
       return out;
     });

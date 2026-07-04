@@ -29,7 +29,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useSimStore } from '../store/useSimStore';
 import { BladeRow } from './BladeRow';
-import { AXIS, RADII } from '../data/engineLayout';
+import { AXIS, RADII, SPOOL_SPIN_SIGN } from '../data/engineLayout';
 import { createTube } from '../geometry/annularSection';
 import { createTurbineBladeGeometry } from '../geometry/turbineBladeGeometry';
 import { temperatureColor, heatFraction } from '../util/colorScale';
@@ -257,8 +257,8 @@ export function Turbine() {
 
     // HPT drum rides the HP spool; LPT drum rides the LP spool. Plus a tiny
     // start/shutdown rumble on both (zero at rest and at/above idle).
-    hptDrumGroup.current.rotation.x = spool.hpAngle;
-    lptDrumGroup.current.rotation.x = spool.lpAngle;
+    hptDrumGroup.current.rotation.x = SPOOL_SPIN_SIGN * spool.hpAngle;
+    lptDrumGroup.current.rotation.x = SPOOL_SPIN_SIGN * spool.lpAngle;
     const jitter = subIdleJitter(clock.elapsedTime, spool.n2);
     hptDrumGroup.current.position.y = jitter;
     lptDrumGroup.current.position.y = jitter;
