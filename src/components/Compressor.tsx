@@ -64,6 +64,9 @@ const drumRadiusAt = (x: number): number =>
 const RIM_LIP = 0.012;
 
 export function Compressor() {
+  // Internals drive-train view: blade rows hide, drums/disks/cones stay.
+  const internals = useSimStore((s) => s.viewMode === 'internals');
+
   // --- Core drum under the blades ----------------------------------------
   // One frustum profile (r=0.50 at lpcStart down to r=0.34 at hpcEnd), but
   // built as TWO tubes split at the booster/HPC boundary because the two
@@ -238,8 +241,9 @@ export function Compressor() {
         />
       </group>
 
-      {/* Booster (LPC): LP-driven rotor rows + interleaved stators. */}
-      {boosterGeos.map((geo, i) => {
+      {/* Booster (LPC): LP-driven rotor rows + interleaved stators. Hidden in
+          the Internals drive-train view (drums/disks/cones above stay). */}
+      {!internals && boosterGeos.map((geo, i) => {
         const x = boosterX(i);
         return (
           <group key={`booster-${i}`}>
@@ -263,8 +267,8 @@ export function Compressor() {
         );
       })}
 
-      {/* HPC: HP-driven rotor rows + interleaved stators. */}
-      {hpcGeos.map((geo, i) => {
+      {/* HPC: HP-driven rotor rows + interleaved stators (hidden in Internals). */}
+      {!internals && hpcGeos.map((geo, i) => {
         const x = hpcX(i);
         return (
           <group key={`hpc-${i}`}>

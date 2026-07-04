@@ -39,6 +39,8 @@ const dummy = new THREE.Object3D();
 
 export function Fan() {
   const config = useSimStore((s) => s.config);
+  // Internals drive-train view: blades/OGVs/blur hide, spool group stays.
+  const internals = useSimStore((s) => s.viewMode === 'internals');
 
   // The spinner + hub spin with the LP spool; one group drives both.
   const spoolGroup = useRef<THREE.Group>(null!);
@@ -183,41 +185,47 @@ export function Fan() {
         />
       </group>
 
-      {/* 22 composite fan blades — spin with the LP spool. */}
-      <BladeRow
-        geometry={fanBladeGeo}
-        material={bladeMat}
-        count={config.numFanBlades}
-        x={AXIS.fanPlane}
-        spin="lp"
-      />
+      {/* Blade rows + blur disc hide in the Internals drive-train view — the
+          spinner, hub, fan disk and dovetails above keep spinning there. */}
+      {!internals && (
+        <>
+          {/* 22 composite fan blades — spin with the LP spool. */}
+          <BladeRow
+            geometry={fanBladeGeo}
+            material={bladeMat}
+            count={config.numFanBlades}
+            x={AXIS.fanPlane}
+            spin="lp"
+          />
 
-      {/* Motion-blur disc: fades in at high RPM so the fan reads as a blur. */}
-      <mesh geometry={blurDiscGeo} position={[AXIS.fanPlane + 0.06, 0, 0]}>
-        <meshStandardMaterial
-          ref={blurMatRef}
-          color="#15181d"
-          metalness={0.3}
-          roughness={0.7}
-          transparent
-          opacity={0}
-          depthWrite={false}
-          side={THREE.DoubleSide}
-        />
-      </mesh>
+          {/* Motion-blur disc: fades in at high RPM so the fan reads as a blur. */}
+          <mesh geometry={blurDiscGeo} position={[AXIS.fanPlane + 0.06, 0, 0]}>
+            <meshStandardMaterial
+              ref={blurMatRef}
+              color="#15181d"
+              metalness={0.3}
+              roughness={0.7}
+              transparent
+              opacity={0}
+              depthWrite={false}
+              side={THREE.DoubleSide}
+            />
+          </mesh>
 
-      {/* Stationary outlet guide vanes: the FIRST stator after the fan. Placed
-          just aft of the fan's swept tip TE (~x=-2.50 at the duct radius) and
-          FORWARD of the first booster rotor (the booster rows are packed aft to
-          leave room — see Compressor.tsx). Sits in the bypass annulus, below
-          the fan tips. */}
-      <BladeRow
-        geometry={ogvGeo}
-        material={ogvMat}
-        count={OGV_COUNT}
-        x={AXIS.fanPlane + 0.82}
-        spin={null}
-      />
+          {/* Stationary outlet guide vanes: the FIRST stator after the fan.
+              Placed just aft of the fan's swept tip TE (~x=-2.50 at the duct
+              radius) and FORWARD of the first booster rotor (the booster rows
+              are packed aft to leave room — see Compressor.tsx). Sits in the
+              bypass annulus, below the fan tips. */}
+          <BladeRow
+            geometry={ogvGeo}
+            material={ogvMat}
+            count={OGV_COUNT}
+            x={AXIS.fanPlane + 0.82}
+            spin={null}
+          />
+        </>
+      )}
     </group>
   );
 }

@@ -63,6 +63,8 @@ interface StageGeo {
 
 export function Turbine() {
   const { hptStages, lptStages } = useSimStore.getState().config;
+  // Internals drive-train view: blade rows hide, drums/disks/cones stay.
+  const internals = useSimStore((s) => s.viewMode === 'internals');
 
   // --- Core drum (rotating disk stack) --------------------------------------
   // One gently flaring profile (0.40 at hptStart → 0.50 at lptEnd, matching the
@@ -252,8 +254,9 @@ export function Turbine() {
         />
       </group>
 
-      {/* HP turbine: per stage, an NGV stator immediately ahead of the rotor. */}
-      {hptStageGeos.map((stage, i) => {
+      {/* HP turbine: per stage, an NGV stator immediately ahead of the rotor.
+          Hidden in the Internals drive-train view (drums/disks/cones stay). */}
+      {!internals && hptStageGeos.map((stage, i) => {
         const span = AXIS.hptEnd - AXIS.hptStart;
         const slot = span / hptStages;
         const statorX = stage.x - slot * 0.3; // NGV sits just upstream of rotor
@@ -278,8 +281,8 @@ export function Turbine() {
         );
       })}
 
-      {/* LP turbine: same stator-then-rotor layout, growing blades. */}
-      {lptStageGeos.map((stage, i) => {
+      {/* LP turbine: same stator-then-rotor layout (hidden in Internals). */}
+      {!internals && lptStageGeos.map((stage, i) => {
         const span = AXIS.lptEnd - AXIS.lptStart;
         const slot = span / lptStages;
         const statorX = stage.x - slot * 0.3;

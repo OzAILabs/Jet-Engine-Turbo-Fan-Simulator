@@ -74,21 +74,25 @@ export function EngineModel3D() {
           modules are pulled apart so they don't dangle in the gaps. */}
       {!exploded && <Shafts />}
 
-      {/* Rotating machinery & static internals (spread apart when exploded;
-          hidden entirely in the Internals drive-train view). */}
+      {/* Rotating machinery & static internals (spread apart when exploded).
+          Fan/Compressor/Turbine stay mounted in the Internals view — they hide
+          their own BLADE ROWS there but keep the spinning drums, machined
+          disks and drive cones on stage with the shafts and bearings. */}
+      <group position={off(MODULE_CENTERS.fan)}>
+        <Fan />
+      </group>
+      <group position={off(MODULE_CENTERS.compressor)}>
+        <Compressor />
+      </group>
+      <group position={off(MODULE_CENTERS.turbine)}>
+        <Turbine />
+      </group>
+      {/* The combustor can + nozzles are pure gas path — nothing rotates, so
+          the Internals drive-train view drops them entirely. */}
       {!internals && (
         <>
-          <group position={off(MODULE_CENTERS.fan)}>
-            <Fan />
-          </group>
-          <group position={off(MODULE_CENTERS.compressor)}>
-            <Compressor />
-          </group>
           <group position={off(MODULE_CENTERS.combustor)}>
             <Combustor />
-          </group>
-          <group position={off(MODULE_CENTERS.turbine)}>
-            <Turbine />
           </group>
           <group position={off(MODULE_CENTERS.nozzles)}>
             <Nozzles />
