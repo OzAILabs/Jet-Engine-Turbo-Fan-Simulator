@@ -1077,3 +1077,234 @@ input.slider::-moz-range-thumb {
   .eic-dials { gap: 5px; }
   .eic-lcd-sm { min-width: 56px; }
 }
+
+
+/* ===========================================================================
+   ChartsPanel additions — collapsible chart sections, StartTrends strip
+   chart (trend-*), CompressorMap (cm-*).
+   =========================================================================== */
+.chart-toggle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0 0 6px;
+  margin: 0;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  text-align: left;
+}
+.chart-toggle:hover {
+  color: var(--text);
+}
+.chart-chevron {
+  font-size: 9px;
+  color: var(--muted);
+}
+.chart-collapsed {
+  display: none;
+}
+
+/* ---- Start trends (rolling 120 s strip chart) ----------------------------- */
+.trend-body {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.trend-svg {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.trend-frame {
+  fill: rgba(0, 0, 0, 0.28);
+  stroke: rgba(120, 150, 190, 0.22);
+  stroke-width: 1;
+}
+.trend-grid {
+  stroke: rgba(120, 150, 190, 0.14);
+  stroke-width: 1;
+}
+.trend-tick {
+  fill: var(--muted);
+  font-size: 7.5px;
+  text-anchor: middle;
+  font-family: 'Consolas', 'Roboto Mono', monospace;
+}
+.trend-line {
+  fill: none;
+  stroke-width: 1.4;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.trend-n1 {
+  stroke: var(--accent-2);
+}
+.trend-egt {
+  stroke: var(--warn);
+}
+.trend-ff {
+  stroke: var(--crit);
+}
+.trend-legend {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 7px;
+  min-width: 52px;
+}
+.trend-key {
+  border-left: 3px solid var(--muted);
+  padding: 0 0 0 6px;
+  line-height: 1.15;
+}
+.trend-key.key-n1 {
+  border-left-color: var(--accent-2);
+}
+.trend-key.key-egt {
+  border-left-color: var(--warn);
+}
+.trend-key.key-ff {
+  border-left-color: var(--crit);
+}
+.trend-key-name {
+  display: block;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  color: var(--muted);
+}
+.trend-key-val {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  font-family: 'Consolas', 'Roboto Mono', monospace;
+}
+.trend-key-unit {
+  font-size: 8.5px;
+  color: var(--muted);
+  margin-left: 2px;
+}
+.trend-caption {
+  margin-top: 4px;
+  font-size: 9.5px;
+  color: var(--muted);
+}
+
+/* ---- Compressor map -------------------------------------------------------- */
+.cm-readout {
+  display: flex;
+  gap: 12px;
+  font-size: 10px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.cm-readout b {
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  font-family: 'Consolas', 'Roboto Mono', monospace;
+}
+.cm-readout.sm-warn .cm-sm b {
+  color: var(--warn);
+}
+.cm-readout.sm-crit .cm-sm b {
+  color: var(--crit);
+}
+.cm-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.cm-frame {
+  fill: rgba(0, 0, 0, 0.28);
+  stroke: rgba(120, 150, 190, 0.22);
+  stroke-width: 1;
+}
+.cm-grid {
+  stroke: rgba(120, 150, 190, 0.1);
+  stroke-width: 1;
+}
+.cm-surge-region {
+  fill: rgba(255, 93, 93, 0.07);
+  stroke: none;
+}
+.cm-surge-line {
+  fill: none;
+  stroke: var(--crit);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+  opacity: 0.9;
+}
+.cm-op-line {
+  fill: none;
+  stroke: rgba(216, 224, 236, 0.7);
+  stroke-width: 1;
+}
+.cm-region-label {
+  fill: rgba(255, 93, 93, 0.65);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.6px;
+}
+.cm-op-label {
+  fill: rgba(216, 224, 236, 0.5);
+  font-size: 7.5px;
+  letter-spacing: 0.8px;
+}
+.cm-trail {
+  fill: var(--accent);
+}
+.cm-dot {
+  fill: #eef3fa;
+  stroke: rgba(95, 168, 255, 0.7);
+  stroke-width: 1.6;
+}
+.cm-dot.is-warn {
+  fill: var(--warn);
+  stroke: rgba(227, 179, 65, 0.6);
+}
+.cm-dot.is-crit {
+  fill: var(--crit);
+  stroke: rgba(255, 93, 93, 0.6);
+}
+.cm-offmap {
+  fill: var(--muted);
+  font-size: 8px;
+  letter-spacing: 1px;
+}
+.cm-tick {
+  fill: var(--muted);
+  font-size: 8px;
+  font-family: 'Consolas', 'Roboto Mono', monospace;
+}
+.cm-tick-x {
+  text-anchor: middle;
+}
+.cm-tick-y {
+  text-anchor: end;
+}
+.cm-axis-label {
+  fill: var(--muted);
+  font-size: 7.5px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-anchor: middle;
+}
+.cm-caption {
+  margin-top: 4px;
+  font-size: 9.5px;
+  color: var(--muted);
+  line-height: 1.35;
+}

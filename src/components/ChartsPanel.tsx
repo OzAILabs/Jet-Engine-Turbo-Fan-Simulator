@@ -9,9 +9,12 @@
  * engine slice of the store so the bars recompute whenever the physics
  * updates. The bars themselves are pure CSS widths driven by percentages.
  */
+import { useState, type ReactNode } from 'react';
 import { useSimStore } from '../store/useSimStore';
 import { temperatureColor } from '../util/colorScale';
 import { paToKpa, newtonsToKn } from '../sim/units';
+import { StartTrends } from './StartTrends';
+import { CompressorMap } from './CompressorMap';
 
 /** StationId values we read from engine.stations. */
 type StationKey = '2' | '25' | '3' | '4' | '45' | '5' | '8';
@@ -39,6 +42,25 @@ function Bar(props: {
         <div className="bar-fill" style={{ width: width + '%', background: color }} />
       </div>
       <span className="bar-val">{value}</span>
+    </div>
+  );
+}
+
+/**
+ * Collapsible chart group. Children stay MOUNTED while collapsed (hidden via
+ * CSS) so time-history components (StartTrends' ring buffer, CompressorMap's
+ * trail) keep recording and reopen with their history intact.
+ */
+function ChartSection(props: { title: string; children: ReactNode }) {
+  const { title, children } = props;
+  const [open, setOpen] = useState(true);
+  return (
+    <div className="chart">
+      <button className="chart-toggle" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <span>{title}</span>
+        <span className="chart-chevron">{open ? '▾' : '▸'}</span>
+      </button>
+      <div className={open ? undefined : 'chart-collapsed'}>{children}</div>
     </div>
   );
 }
@@ -82,6 +104,16 @@ export function ChartsPanel() {
   return (
     <div className="panel">
       <div className="panel-title">Charts</div>
+
+      {/* Start trends: rolling N1/EGT/FF strip chart — the start-sequence story */}
+      <ChartSection title="Start trends — N1 · EGT · FF">
+        <StartTrends />
+      </ChartSection>
+
+      {/* Compressor map: surge line vs the live operating point */}
+      <ChartSection title="Compressor map">
+        <CompressorMap />
+      </ChartSection>
 
       {/* Pressure by station */}
       <div className="chart">
