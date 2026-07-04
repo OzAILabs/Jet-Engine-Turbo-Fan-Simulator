@@ -21,12 +21,15 @@ const EXHAUST_STYLES: { style: ExhaustStyle; label: string }[] = [
   { style: 'shader', label: 'Dramatic' },
 ];
 
-// The four render modes shown in the segmented control, paired with labels.
+// The render modes shown in the segmented control, paired with labels.
 const VIEW_MODES: { mode: ViewMode; label: string }[] = [
   { mode: 'full', label: 'Full' },
   { mode: 'transparent', label: 'Transparent' },
   { mode: 'cutaway', label: 'Cutaway' },
   { mode: 'exploded', label: 'Exploded' },
+  // Drive-train X-ray: shells + gas-path machinery hidden; shafts, bearings
+  // and the accessory hardware get the stage to themselves.
+  { mode: 'internals', label: 'Internals' },
 ];
 
 // The five overlay toggles. The key matches both the store boolean and the

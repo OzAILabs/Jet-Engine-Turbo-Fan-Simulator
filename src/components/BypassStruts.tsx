@@ -76,7 +76,7 @@ export function BypassStruts() {
     [],
   );
 
-  if (viewMode === 'exploded') return null;
+  if (viewMode === 'exploded' || viewMode === 'internals') return null;
 
   return <BladeRow geometry={strutGeo} material={strutMat} count={STRUT_COUNT} x={STRUT_X} spin={null} />;
 }

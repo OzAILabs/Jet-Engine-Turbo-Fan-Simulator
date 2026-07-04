@@ -48,6 +48,9 @@ export function EngineModel3D() {
   const root = useRef<THREE.Group>(null!);
   const debugMode = useSimStore((s) => s.debugMode);
   const exploded = useSimStore((s) => s.viewMode === 'exploded');
+  // Drive-train X-ray: hide the gas-path machinery so the shafts, bearings
+  // and accessory drive get the stage to themselves.
+  const internals = useSimStore((s) => s.viewMode === 'internals');
 
   const off = (center: number): [number, number, number] => [exploded ? explodeShiftX(center) : 0, 0, 0];
 
@@ -71,22 +74,27 @@ export function EngineModel3D() {
           modules are pulled apart so they don't dangle in the gaps. */}
       {!exploded && <Shafts />}
 
-      {/* Rotating machinery & static internals (spread apart when exploded). */}
-      <group position={off(MODULE_CENTERS.fan)}>
-        <Fan />
-      </group>
-      <group position={off(MODULE_CENTERS.compressor)}>
-        <Compressor />
-      </group>
-      <group position={off(MODULE_CENTERS.combustor)}>
-        <Combustor />
-      </group>
-      <group position={off(MODULE_CENTERS.turbine)}>
-        <Turbine />
-      </group>
-      <group position={off(MODULE_CENTERS.nozzles)}>
-        <Nozzles />
-      </group>
+      {/* Rotating machinery & static internals (spread apart when exploded;
+          hidden entirely in the Internals drive-train view). */}
+      {!internals && (
+        <>
+          <group position={off(MODULE_CENTERS.fan)}>
+            <Fan />
+          </group>
+          <group position={off(MODULE_CENTERS.compressor)}>
+            <Compressor />
+          </group>
+          <group position={off(MODULE_CENTERS.combustor)}>
+            <Combustor />
+          </group>
+          <group position={off(MODULE_CENTERS.turbine)}>
+            <Turbine />
+          </group>
+          <group position={off(MODULE_CENTERS.nozzles)}>
+            <Nozzles />
+          </group>
+        </>
+      )}
 
       {/* Casings / shells (transparency & cutaway handled inside; they hide
           themselves in exploded mode so there is no floating "ghost" shell). */}
@@ -96,8 +104,9 @@ export function EngineModel3D() {
       <Nacelle />
 
       {/* Flow visualization follows the assembled engine, so hide it when
-          exploded (the modules no longer line up with the flow paths). */}
-      {!exploded && (
+          exploded (the modules no longer line up with the flow paths) and in
+          the Internals view (there is no visible gas path to follow). */}
+      {!exploded && !internals && (
         <>
           <FlowParticles />
           <ExhaustPlume />

@@ -107,7 +107,8 @@ export function Bearings() {
   // shown only while the case is present but see-through. viewMode is the one
   // reactive subscription; everything live is read via getState() in useFrame.
   const viewMode = useSimStore((s) => s.viewMode);
-  const show = viewMode === 'transparent' || viewMode === 'cutaway';
+  const show =
+    viewMode === 'transparent' || viewMode === 'cutaway' || viewMode === 'internals';
   const cutaway = viewMode === 'cutaway';
 
   const lpSpinRef = useRef<THREE.Group>(null);

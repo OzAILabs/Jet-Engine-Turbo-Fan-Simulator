@@ -93,8 +93,9 @@ export function Nacelle() {
   }, [viewMode, material, shellFull, shellCut, ductFull, ductCut]);
 
   // In exploded view the cowl is hidden entirely so the separated internal
-  // modules are fully visible (and there is no faint floating shell).
-  if (viewMode === 'exploded') return null;
+  // modules are fully visible (and there is no faint floating shell). Same in
+  // the Internals drive-train view — no shells at all.
+  if (viewMode === 'exploded' || viewMode === 'internals') return null;
 
   return (
     <group ref={root}>

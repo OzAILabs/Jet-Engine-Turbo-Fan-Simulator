@@ -33,7 +33,7 @@ import type { EngineConfig, EngineInputs, EngineState, SpoolState, StationId } f
 import { clamp } from '../sim/units';
 
 // --- View enums -----------------------------------------------------------
-export type ViewMode = 'full' | 'transparent' | 'cutaway' | 'exploded';
+export type ViewMode = 'full' | 'transparent' | 'cutaway' | 'exploded' | 'internals';
 export type CameraMode = 'orthographic' | 'perspective';
 /** Exhaust rendering style: realistic translucent gas vs. dramatic bright plume. */
 export type ExhaustStyle = 'volumetric' | 'shader';

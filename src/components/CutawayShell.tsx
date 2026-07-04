@@ -105,8 +105,9 @@ export function CutawayShell() {
     }
   }, [viewMode, fullGeometry, cutawayGeometry]);
 
-  // Hidden in exploded view — the separated modules are shown without the casing.
-  if (viewMode === 'exploded') return null;
+  // Hidden in exploded view — the separated modules are shown without the
+  // casing — and in the Internals drive-train view (no shells at all).
+  if (viewMode === 'exploded' || viewMode === 'internals') return null;
 
   return (
     <>

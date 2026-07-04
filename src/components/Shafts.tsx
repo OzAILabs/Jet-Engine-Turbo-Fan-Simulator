@@ -72,8 +72,10 @@ export function Shafts() {
   // the one value we read reactively.
   const viewMode = useSimStore((s) => s.viewMode);
   const visible = viewMode !== 'full';
-  // Frames tie shaft to case: shown only while the case is in place but see-through.
-  const showFrames = viewMode === 'transparent' || viewMode === 'cutaway';
+  // Frames tie shaft to case: shown while the case is in place but see-through,
+  // and in the Internals drive-train view (where they carry the bearings).
+  const showFrames =
+    viewMode === 'transparent' || viewMode === 'cutaway' || viewMode === 'internals';
 
   const lpGroup = useRef<THREE.Group>(null!);
   const hpGroup = useRef<THREE.Group>(null!);
