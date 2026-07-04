@@ -15,11 +15,13 @@
  *    rings the inner bypass wall just outboard of the doors, plus a pneumatic
  *    sense line running aft along the case.
  *
- * Performance: 9 draw calls — merged ring/link mesh, one InstancedMesh each
- * for lever arms / bleed doors / louver slats, merged actuator bodies, merged
- * actuator rods, merged fuel lines, the VBV collar lathe, and the sense line.
- * Door matrices are rebuilt per frame (10 instances — cheap); everything else
- * is static. Live values are read NON-reactively via useSimStore.getState().
+ * Performance: 10 draw calls — merged ring/link mesh, one InstancedMesh each
+ * for lever arms / bleed doors / louver slats, merged actuator bodies+mounts,
+ * one moving group holding the merged actuator RODS + CLEVISES (they stroke
+ * axially with the VSV schedule, piston-style), merged fuel lines, the VBV
+ * collar lathe, and the sense line. Door matrices are rebuilt per frame (10
+ * instances — cheap); everything else is static. Live values are read
+ * NON-reactively via useSimStore.getState().
  */
 import { useLayoutEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
@@ -75,6 +77,7 @@ export function CompressorBleedSystems() {
   const viewMode = useSimStore((s) => s.viewMode);
 
   const ringsGroup = useRef<THREE.Group>(null!);
+  const rodGroup = useRef<THREE.Group>(null!);
   const armsRef = useRef<THREE.InstancedMesh>(null!);
   const doorsRef = useRef<THREE.InstancedMesh>(null!);
   const louversRef = useRef<THREE.InstancedMesh>(null!);
@@ -126,10 +129,14 @@ export function CompressorBleedSystems() {
   // Tiny vane lever arm: radial box from the case surface up to its ring.
   const armGeo = useMemo(() => new THREE.BoxGeometry(0.014, 0.06, 0.02), []);
 
-  // --- VSV actuators (clock 4 / clock 8): body + mount + clevis, gold rod ---
+  // --- VSV actuators (clock 4 / clock 8): body + mount stay fixed; the rod +
+  // clevis live in a separate MOVING pile so they can stroke piston-style with
+  // the VSV schedule (geometry is authored in the fully-OPEN position, i.e.
+  // where the old static art sat, and translated forward as the vanes close).
   const actuatorGeos = useMemo(() => {
     const steel: THREE.BufferGeometry[] = [];
-    const gold: THREE.BufferGeometry[] = [];
+    const movingSteel: THREE.BufferGeometry[] = [];
+    const movingGold: THREE.BufferGeometry[] = [];
     for (const act of EXTERNALS.vsvActuators) {
       const rMount = coreCaseRadiusAt(act.x) + 0.065;
       // Local frame: barrel along X, nose tipped slightly inboard so the rod
@@ -149,14 +156,21 @@ export function CompressorBleedSystems() {
       steel.push(place(mount));
       const clevis = new THREE.BoxGeometry(0.05, 0.046, 0.04); // grabs the link
       clevis.translate(-0.26, 0, 0);
-      steel.push(place(clevis));
+      movingSteel.push(place(clevis));
       const rod = new THREE.CylinderGeometry(0.011, 0.011, 0.16, 10);
       rod.rotateZ(Math.PI / 2);
       rod.translate(-0.18, 0, 0);
-      gold.push(place(rod));
+      movingGold.push(place(rod));
     }
-    return { steel: mergeGeometries(steel)!, gold: mergeGeometries(gold)! };
+    return {
+      steel: mergeGeometries(steel)!,
+      movingSteel: mergeGeometries(movingSteel)!,
+      movingGold: mergeGeometries(movingGold)!,
+    };
   }, []);
+
+  /** Rod stroke matching the work it does: ring twist × link radius (~3.5 cm). */
+  const ROD_STROKE = VSV_CLOSED_ANGLE * LINK_R;
 
   // --- Fueldraulic supply lines: actuators → AGB/HMU region (~x −0.6, clk 5) -
   const fuelLineGeo = useMemo(() => {
@@ -268,6 +282,12 @@ export function CompressorBleedSystems() {
     if (ringsGroup.current) {
       ringsGroup.current.rotation.x = VSV_CLOSED_ANGLE * (1 - actuation.vsvOpenFrac);
     }
+    // The fueldraulic actuator rods stroke with the same schedule: extended
+    // (rod out, clevis pushed forward) when the vanes are closed, flush with
+    // the authored art when fully open. Pure axial piston motion.
+    if (rodGroup.current) {
+      rodGroup.current.position.x = -ROD_STROKE * (1 - actuation.vsvOpenFrac);
+    }
 
     // VBV position from the FADEC schedule: all 10 doors fully open below idle
     // (start: booster air dumps into the fan duct), closing above idle.
@@ -322,9 +342,14 @@ export function CompressorBleedSystems() {
         />
       </group>
 
-      {/* Two fueldraulic VSV actuators (bodies/clevises) + polished rods */}
+      {/* Two fueldraulic VSV actuators: fixed bodies + mounts... */}
       <mesh geometry={actuatorGeos.steel} material={mats.bracket} castShadow={false} />
-      <mesh geometry={actuatorGeos.gold} material={mats.gold} castShadow={false} />
+      {/* ...and the stroking rods + clevises (translated axially in useFrame
+          with the FADEC VSV schedule — extended when the vanes are closed). */}
+      <group ref={rodGroup}>
+        <mesh geometry={actuatorGeos.movingSteel} material={mats.bracket} castShadow={false} />
+        <mesh geometry={actuatorGeos.movingGold} material={mats.gold} castShadow={false} />
+      </group>
 
       {/* Fuel-red supply lines down toward the AGB / HMU region */}
       <mesh geometry={fuelLineGeo} material={mats.fuel} castShadow={false} />
