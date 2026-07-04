@@ -111,8 +111,11 @@ export function CameraRig() {
     controls.update();
   });
 
-  const polarLimit = debugMode ? Math.PI : Math.PI * 0.52;
-  const minPolar = debugMode ? 0 : Math.PI * 0.06;
+  // Nearly the full polar range: the accessory gearbox, oil tank and most
+  // plumbing hang at 6:00, so the camera must be able to swing UNDER the
+  // engine to inspect them (stop just short of the poles to avoid flips).
+  const polarLimit = debugMode ? Math.PI : Math.PI * 0.97;
+  const minPolar = debugMode ? 0 : Math.PI * 0.03;
 
   return (
     <>
@@ -139,9 +142,12 @@ export function CameraRig() {
         dampingFactor={0.08}
         enablePan
         enableZoom
-        minZoom={18}
-        maxZoom={420}
-        minDistance={3}
+        // Deep-inspection zoom range: bearings/gears are centimeter-scale
+        // parts, so the ortho zoom ceiling and the perspective near-distance
+        // must allow getting right into the core.
+        minZoom={12}
+        maxZoom={2600}
+        minDistance={0.35}
         maxDistance={70}
         minPolarAngle={minPolar}
         maxPolarAngle={polarLimit}
