@@ -44,12 +44,12 @@ export const STATION_COPY: Record<StationId, StationCopy> = {
   },
   '45': {
     explanation:
-      'Exit of the high-pressure turbine. The HPT has just extracted the work needed to drive the HP compressor.',
+      'Exit of the high-pressure turbine, inlet to the LPT — and home of the flight-deck EGT probes (T49). The gas here is the hottest a thermocouple can survive long-term, so this is the temperature pilots actually watch.',
     whatChanged: 'The HPT expanded the hot gas, dropping its temperature and pressure to power the HPC on the same shaft.',
   },
   '5': {
     explanation:
-      'Low-pressure turbine exit (exhaust gas temperature, EGT). The LPT drives the fan and booster.',
+      'Low-pressure turbine exit. The LPT has just extracted the work that drives the fan and booster. Note: the EGT gauge does not read here — it reads T49, measured upstream between the turbines at station 4.5.',
     whatChanged: 'Six LPT stages extracted the large amount of work the fan needs, dropping temperature and pressure further.',
   },
   '8': {
@@ -66,14 +66,40 @@ export const STATION_COPY: Record<StationId, StationCopy> = {
 
 /** Short labels shown floating on the 3D model for each major section. */
 export const SECTION_LABELS: Record<string, string> = {
-  fan: 'Accelerates huge bypass airflow. Main thrust producer.',
-  booster: 'Raises core pressure before the HPC.',
-  hpc: 'Many axial stages squeeze air to high pressure.',
-  combustor: 'Fuel burns in the primary zone; dilution air protects the turbine.',
-  hpt: 'Extracts energy to drive the HPC.',
-  lpt: 'Extracts energy to drive the fan and booster.',
-  bypass: 'A large mass of cooler air flows around the core.',
-  nozzle: 'Converts pressure & temperature into jet velocity.',
+  fan: 'Accelerates the huge bypass stream — most of the thrust. Moving a lot of air a little beats moving a little air a lot.',
+  booster: 'Pre-compresses core air so the HPC does not have to do all the compression alone.',
+  hpc: 'Nine stages squeeze air to ~40× ambient. High pressure is what lets the fuel release far more useful energy.',
+  combustor: 'Fuel burns at nearly constant pressure; dilution air trims the peak so the turbine survives.',
+  hpt: 'Extracts just enough power from the hottest gas to spin its shaft partner, the HPC.',
+  lpt: 'Six stages pull the enormous power the fan demands out of the remaining lower-pressure gas.',
+  bypass: 'The big, cool stream around the core — quieter and more efficient thrust than a hot jet alone.',
+  nozzle: 'Converts leftover pressure & heat into jet velocity — the final push.',
+};
+
+/**
+ * Why the operating limits exist — shown as tooltips on the EICAS gauges and
+ * referenced by the glossary. Keys match the limit constants in
+ * src/data/defaultEngineConfig.ts.
+ */
+export const LIMITS_EXPLAINED: Record<string, string> = {
+  egtStartLimitGroundC:
+    '750 °C ground-start limit: during start there is almost no cooling airflow through the turbine, ' +
+    'so the blades tolerate far less heat than at full power. Exceeding it is a "hot start" — ' +
+    'the autostart system cuts fuel to protect the hot section.',
+  egtTakeoffLimitC:
+    '1090 °C takeoff EGT limit (T49): turbine superalloys begin to creep — slowly stretch under ' +
+    'centrifugal load — above their design temperature. The limit sits below that point so the ' +
+    'blades last thousands of flight hours; minutes of exceedance can permanently shorten blade life.',
+  n1RedlineFrac:
+    'N1 redline 110.5% (≈2,602 rpm): fan blade root stress grows with the square of speed. ' +
+    'Beyond redline, centrifugal force approaches the retention design margin of the fan disk dovetails.',
+  n2RedlineFrac:
+    'N2 redline 121% (≈11,292 rpm): the HP spool\'s disks carry enormous centrifugal load — ' +
+    'overspeeding risks disk burst, the most dangerous uncontained failure a turbofan can have.',
+  surgeMargin:
+    'Surge margin is the headroom between the compressor\'s current operating point and the surge ' +
+    'line, where airflow breaks down and reverses with a bang. Healthy engines keep 15–30%; ' +
+    'rapid accelerations temporarily carve into it.',
 };
 
 export const DISCLAIMER =

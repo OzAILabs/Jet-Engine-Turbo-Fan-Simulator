@@ -26,6 +26,7 @@
  *    (cold & dark reset).
  */
 import { useRef } from 'react';
+import { LIMITS_EXPLAINED } from '../data/educationalCopy';
 import { useSimStore } from '../store/useSimStore';
 
 // --- Shared geometry (matches the old Dial's convention exactly) -----------
@@ -94,6 +95,8 @@ interface ArcGaugeProps {
   exceedLimit?: number;
   /** True clears the latched peak (cold & dark reset). */
   latchReset: boolean;
+  /** Hover tooltip explaining why this gauge's limit exists (educational). */
+  limitHint?: string;
 }
 
 function ArcGauge(props: ArcGaugeProps) {
@@ -132,7 +135,7 @@ function ArcGauge(props: ArcGaugeProps) {
   }
 
   return (
-    <div className={`eic-gauge${exceed ? ' is-exceed' : ''}`}>
+    <div className={`eic-gauge${exceed ? ' is-exceed' : ''}`} title={props.limitHint}>
       <svg viewBox="0 0 116 98">
         {/* amber caution band, painted just outside the scale arc */}
         {amberFrom !== undefined && amberFrom < redline && (
@@ -283,6 +286,7 @@ export function EicasGauges() {
           // read as a fault. Above idle, bug-vs-needle IS the spool lag.
           commandBug={running ? targetN1 * 100 : null}
           latchReset={latchReset}
+          limitHint={LIMITS_EXPLAINED.n1RedlineFrac}
         />
         <ArcGauge
           label="EGT"
@@ -298,6 +302,9 @@ export function EicasGauges() {
           startLimit={showStartLimit ? cfg.egtStartLimitGroundC : null}
           exceedLimit={egtExceedLimit}
           latchReset={latchReset}
+          limitHint={
+            showStartLimit ? LIMITS_EXPLAINED.egtStartLimitGroundC : LIMITS_EXPLAINED.egtTakeoffLimitC
+          }
         />
         <ArcGauge
           label="N2"
@@ -310,6 +317,7 @@ export function EicasGauges() {
           digits={1}
           redline={n2Redline}
           latchReset={latchReset}
+          limitHint={LIMITS_EXPLAINED.n2RedlineFrac}
         />
       </div>
 
