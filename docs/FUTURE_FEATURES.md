@@ -89,6 +89,14 @@ completed, substantially changed, or intentionally deferred.
   (T-s diagram raw material), turbine-cooling bleed bookkeeping
   (coolingBleedFraction/Flow, hptRotorInletTemp), h & s in the station cards,
   6 new contract tests.
+- [x] **Phase 4 classroom**: live T–s diagram (the Brayton cycle drawn by the
+  running engine), 29-term audience-gated glossary in the sim's own
+  conventions, five guided lessons driving the real simulator (incl. the
+  surge lab that arms the VBV failure and cleans up after itself), a
+  challenge engine judged by the live physics (3 launch challenges, each
+  proven winnable by store-driven tests), and "the math, live" formula
+  section. Deliberately dropped: a global SI/imperial toggle — the readouts
+  already dual-display thrust/TSFC, the two places pilots actually switch.
 - [x] **Phase 3 anatomy**: renderer-level section cut (Half/Horiz/Cross +
   position slider), secondary-flow particles (oil circuit, VBV dump air,
   HPT cooling air), combustor swirlers + atomizer tips, assembly-tree
