@@ -15,6 +15,7 @@ import { useState } from 'react';
 import { LAYER_IDS, LAYER_LABELS, useSimStore } from '../store/useSimStore';
 import type { ViewMode, ExhaustStyle, LearningMode } from '../store/useSimStore';
 import { engineAudio } from '../audio/engineAudio';
+import { buildShareUrl } from '../util/urlState';
 import { ThrottleQuadrant } from './ThrottleQuadrant';
 
 // Exhaust rendering styles shown in a segmented control.
@@ -99,6 +100,8 @@ export function ControlPanel() {
 
   // Layers checklist visibility (local UI state; collapsed by default).
   const [layersOpen, setLayersOpen] = useState(false);
+  // Share-link copied confirmation flash.
+  const [shareCopied, setShareCopied] = useState(false);
   const toggle = useSimStore((s) => s.toggle);
   const togglePaused = useSimStore((s) => s.togglePaused);
   const resetToTakeoff = useSimStore((s) => s.resetToTakeoff);
@@ -437,6 +440,18 @@ export function ControlPanel() {
           </button>
           <button className="btn" onClick={() => resetToCruise()}>
             Reset Cruise
+          </button>
+          <button
+            className={`btn${shareCopied ? ' is-active' : ''}`}
+            title="Copy a link that restores this exact scenario, view mode, audience tier and section cut — for classrooms."
+            onClick={() => {
+              void navigator.clipboard.writeText(buildShareUrl()).then(() => {
+                setShareCopied(true);
+                window.setTimeout(() => setShareCopied(false), 1500);
+              });
+            }}
+          >
+            {shareCopied ? 'Copied!' : 'Share Link'}
           </button>
         </div>
 

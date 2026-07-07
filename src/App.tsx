@@ -14,8 +14,10 @@ import { WarningPanel } from './components/WarningPanel';
 import { CameraControlsPanel } from './components/CameraControlsPanel';
 import { EngineAudio } from './components/EngineAudio';
 import { StartPanel } from './components/StartPanel';
+import { useEffect } from 'react';
 import { useSimStore } from './store/useSimStore';
 import { DISCLAIMER } from './data/educationalCopy';
+import { applyUrlState } from './util/urlState';
 
 export default function App() {
   // Presentation mode collapses the side panel columns to slim hover-reveal
@@ -25,6 +27,12 @@ export default function App() {
   // Audience tier: 'explore' hides the analytical panels (readouts + charts);
   // the 3D scene, throttle, start panel and EICAS stay for every tier.
   const learningMode = useSimStore((s) => s.learningMode);
+
+  // Classroom share links: a #hash from buildShareUrl() restores the shared
+  // scenario/view/tier once on boot (no-op without one).
+  useEffect(() => {
+    applyUrlState();
+  }, []);
 
   return (
     <div className={`app${presentationMode ? ' is-presentation' : ''}`}>
