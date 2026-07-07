@@ -18,6 +18,9 @@ export default function App() {
   // edge tabs via pure CSS keyed off this root class (see styles.css). The
   // bottom-center ENGINE START dock is deliberately left untouched.
   const presentationMode = useSimStore((s) => s.presentationMode);
+  // Audience tier: 'explore' hides the analytical panels (readouts + charts);
+  // the 3D scene, throttle, start panel and EICAS stay for every tier.
+  const learningMode = useSimStore((s) => s.learningMode);
 
   return (
     <div className={`app${presentationMode ? ' is-presentation' : ''}`}>
@@ -41,8 +44,12 @@ export default function App() {
 
         <div className="ui-col ui-right">
           <WarningPanel />
-          <ReadoutPanel />
-          <ChartsPanel />
+          {learningMode !== 'explore' && (
+            <>
+              <ReadoutPanel />
+              <ChartsPanel />
+            </>
+          )}
         </div>
 
         <StartPanel />

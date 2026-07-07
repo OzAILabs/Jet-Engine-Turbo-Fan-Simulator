@@ -77,6 +77,15 @@ export const LAYER_LABELS: Record<LayerId, string> = {
 
 const allLayersOn = (): LayersState =>
   Object.fromEntries(LAYER_IDS.map((id) => [id, true])) as LayersState;
+
+/**
+ * Audience tiers — progressive disclosure of the UI:
+ *  'explore'     high-school / museum: 3D + throttle + start + EICAS, no charts
+ *  'course'      college propulsion: + readouts, charts, compressor map, trends
+ *  'engineering' practicing engineers: everything (incl. future dev panels)
+ * The 3D scene itself is never gated — only the analytical panel density.
+ */
+export type LearningMode = 'explore' | 'course' | 'engineering';
 export type CameraMode = 'orthographic' | 'perspective';
 /** Exhaust rendering style: realistic translucent gas vs. dramatic bright plume. */
 export type ExhaustStyle = 'volumetric' | 'shader';
@@ -166,6 +175,8 @@ export interface SimStore {
   viewMode: ViewMode;
   /** Per-system 3D visibility, AND-gated with the view-mode logic. */
   layers: LayersState;
+  /** Audience tier (progressive disclosure of the analytical panels). */
+  learningMode: LearningMode;
   exhaustStyle: ExhaustStyle;
   cameraMode: CameraMode;
   cameraCommand: CameraCommand;
@@ -210,6 +221,7 @@ export interface SimStore {
   setViewMode: (m: ViewMode) => void;
   toggleLayer: (id: LayerId) => void;
   setAllLayers: (on: boolean) => void;
+  setLearningMode: (m: LearningMode) => void;
   setExhaustStyle: (s: ExhaustStyle) => void;
   setCameraMode: (m: CameraMode) => void;
   setCameraPreset: (p: CameraPreset) => void;
@@ -289,6 +301,9 @@ export const useSimStore = create<SimStore>((set, get) => ({
 
   viewMode: 'cutaway',
   layers: allLayersOn(),
+  // Engineering by default: existing users keep the full panel set; the
+  // audience picker makes the lighter tiers discoverable.
+  learningMode: 'engineering',
   exhaustStyle: 'shader', // 'Dramatic' bright plume by default
   cameraMode: 'orthographic',
   cameraCommand: { kind: 'reset', preset: 'iso', focusPoint: null, nonce: 0 },
@@ -460,6 +475,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
     set(() => ({
       layers: Object.fromEntries(LAYER_IDS.map((id) => [id, on])) as LayersState,
     })),
+  setLearningMode: (m) => set({ learningMode: m }),
   setExhaustStyle: (s) => set({ exhaustStyle: s }),
   setCameraMode: (m) => set({ cameraMode: m }),
   setCameraPreset: (p) =>

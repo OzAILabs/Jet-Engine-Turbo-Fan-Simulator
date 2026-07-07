@@ -13,7 +13,7 @@
  */
 import { useState } from 'react';
 import { LAYER_IDS, LAYER_LABELS, useSimStore } from '../store/useSimStore';
-import type { ViewMode, ExhaustStyle } from '../store/useSimStore';
+import type { ViewMode, ExhaustStyle, LearningMode } from '../store/useSimStore';
 import { engineAudio } from '../audio/engineAudio';
 import { ThrottleQuadrant } from './ThrottleQuadrant';
 
@@ -21,6 +21,13 @@ import { ThrottleQuadrant } from './ThrottleQuadrant';
 const EXHAUST_STYLES: { style: ExhaustStyle; label: string }[] = [
   { style: 'volumetric', label: 'Realistic' },
   { style: 'shader', label: 'Dramatic' },
+];
+
+// Audience tiers — progressive disclosure of the analytical panels.
+const LEARNING_MODES: { mode: LearningMode; label: string; hint: string }[] = [
+  { mode: 'explore', label: 'Explore', hint: 'Big picture: 3D engine, throttle, start panel, cockpit gauges.' },
+  { mode: 'course', label: 'Course', hint: 'Adds live readouts, station charts, trends and the compressor map.' },
+  { mode: 'engineering', label: 'Engineering', hint: 'Everything, including diagnostic detail as it lands.' },
 ];
 
 // The render modes shown in the segmented control, paired with labels.
@@ -73,6 +80,8 @@ export function ControlPanel() {
   const setAltitude = useSimStore((s) => s.setAltitude);
   const setMach = useSimStore((s) => s.setMach);
   const setIsaOffset = useSimStore((s) => s.setIsaOffset);
+  const learningMode = useSimStore((s) => s.learningMode);
+  const setLearningMode = useSimStore((s) => s.setLearningMode);
   const setViewMode = useSimStore((s) => s.setViewMode);
   const toggleLayer = useSimStore((s) => s.toggleLayer);
   const setAllLayers = useSimStore((s) => s.setAllLayers);
@@ -174,6 +183,25 @@ export function ControlPanel() {
             value={inputs.isaTempOffsetC}
             onChange={(e) => setIsaOffset(+e.target.value)}
           />
+        </div>
+      </div>
+
+      {/* --- Audience tier -------------------------------------------------
+          Progressive disclosure: Explore trims the right-hand analytical
+          panels for a first encounter; Course/Engineering restore them. */}
+      <div className="panel-section">
+        <div className="panel-subtitle">Audience</div>
+        <div className="seg">
+          {LEARNING_MODES.map(({ mode, label, hint }) => (
+            <button
+              key={mode}
+              title={hint}
+              className={`seg-btn${learningMode === mode ? ' is-active' : ''}`}
+              onClick={() => setLearningMode(mode)}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       </div>
 
