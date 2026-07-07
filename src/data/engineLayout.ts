@@ -368,6 +368,12 @@ export const EXTERNALS = {
     starterSlot: { thetaStart: 0.35, thetaLength: Math.PI * 2 - 0.7 },
     /** ATS turbine wheel: axial center + proportions (housing inner r is 0.135). */
     starterWheel: { x: 0.2, tipRadius: 0.125, hubRadius: 0.05, blades: 17 },
+    /**
+     * Exposed gerotor element of the lube & scavenge unit (hangs below the
+     * lube pad, PADS[2] in AccessoryGearbox): a lobed rotor spinning inside a
+     * static open cup at the lube gear's rate, so the oil pump visibly works.
+     */
+    oilPump: { lobes: 5, rotorRadius: 0.03, lobeRadius: 0.015, cupRadius: 0.052, depth: 0.05 },
   },
   /** Fuel pump + HMU stack on the right (3:00-ish ALF) side of the AGB. */
   fuelPumpHmu: { x: -0.55, clock: 4.5, standoff: 0.2 },

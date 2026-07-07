@@ -23,9 +23,10 @@
  *    in the starter housing (see AccessoryGearbox); it spins at starterRatio
  *    (~3x) of N2 ONLY while startSeq.starterEngaged, frozen otherwise.
  *
- * Performance: 12 draw calls — tower shaft, horizontal shaft, collar pair,
- * six single-mesh gears, the stub InstancedMesh, the ATS wheel, and one dark
- * merged mesh (pocket back plate + starter slot liner). Live values are read
+ * Performance: 13 draw calls — tower shaft, horizontal shaft, collar pair,
+ * six single-mesh gears, the stub InstancedMesh, the ATS wheel, the lube
+ * gerotor rotor, and one dark merged mesh (pocket back plate + starter slot
+ * liner + gerotor cup). Live values are read
  * NON-reactively via useSimStore.getState(); only viewMode subscribes.
  * Everything hangs near 6:00 ALF, which the museum cutaway wedge retains.
  */
@@ -99,6 +100,12 @@ const ST = EXTERNALS.starter;
 const ST_POS = clockToYZ(ST.clock, coreCaseRadiusAt(ST.x) + ST.standoff);
 const ST_BODY_X = ST.x + 0.07; // starter housing center (matches AccessoryGearbox)
 
+// Lube & scavenge gerotor: exposed pump element below the lube pad (PADS[2]),
+// spinning at the same rate as that pad's drive coupling (gear PAD_GEAR[2]).
+const PUMP = GT.oilPump;
+const LUBE_PAD = 2;
+const PUMP_CUP_Y_OFF = -0.065; // cup center below the pad's coupling flange
+
 /** One spur gear as ONE merged geometry: root disc + constant-arc-pitch tooth
  *  boxes + hub + hex collar, axis along +Z, centered at the origin. */
 function buildGear(i: number): THREE.BufferGeometry {
@@ -144,6 +151,7 @@ export function AgbGearTrain() {
   const gearRefs = useRef<Array<THREE.Group | null>>([]);
   const stubsRef = useRef<THREE.InstancedMesh>(null);
   const wheelRef = useRef<THREE.Group>(null);
+  const pumpRef = useRef<THREE.Group>(null);
 
   // --- Geometry (built once; merged per material) ---------------------------
   const G = useMemo(() => {
@@ -224,6 +232,22 @@ export function AgbGearTrain() {
       wheelParts.push(blade);
     }
 
+    // Lube gerotor rotor: hub + lobe pins + a thin drive shaft reaching up
+    // toward the pad coupling, all along LOCAL +Y, centered at the origin —
+    // its group spins it at the lube gear's rate.
+    const pumpParts: THREE.BufferGeometry[] = [
+      new THREE.CylinderGeometry(PUMP.rotorRadius * 0.55, PUMP.rotorRadius * 0.55, PUMP.depth - 0.006, 12),
+    ];
+    for (let k = 0; k < PUMP.lobes; k++) {
+      const a = (k / PUMP.lobes) * Math.PI * 2;
+      const lobe = new THREE.CylinderGeometry(PUMP.lobeRadius, PUMP.lobeRadius, PUMP.depth - 0.006, 10);
+      lobe.translate(Math.cos(a) * PUMP.rotorRadius, 0, Math.sin(a) * PUMP.rotorRadius);
+      pumpParts.push(lobe);
+    }
+    const pumpShaft = new THREE.CylinderGeometry(0.008, 0.008, 0.05, 8);
+    pumpShaft.translate(0, PUMP.depth / 2 + 0.02, 0);
+    pumpParts.push(pumpShaft);
+
     // Dark statics: the inspection-pocket back plate + a DoubleSide liner
     // inside the starter housing (same theta gap as the housing slot, so the
     // wheel reads against a dark interior instead of a see-through hole).
@@ -241,6 +265,17 @@ export function AgbGearTrain() {
     liner.rotateZ(-Math.PI / 2); // same orientation as the housing cylinder
     liner.translate(ST_BODY_X, ST_POS.y, ST_POS.z);
 
+    // Gerotor cup: open wall + bottom disc (DoubleSide dark reads as a bore),
+    // merged into the dark statics — the rotor spins proud of the rim.
+    const lube = PADS[LUBE_PAD];
+    const cupY = STUB_Y[LUBE_PAD] + PUMP_CUP_Y_OFF;
+    const cupWall = new THREE.CylinderGeometry(
+      PUMP.cupRadius, PUMP.cupRadius, PUMP.depth, 20, 1, true,
+    );
+    cupWall.translate(lube.x, cupY, lube.z);
+    const cupFloor = new THREE.CylinderGeometry(PUMP.cupRadius, PUMP.cupRadius, 0.006, 20);
+    cupFloor.translate(lube.x, cupY - PUMP.depth / 2, lube.z);
+
     return {
       tower: mergeGeometries(towerParts)!,
       horiz: mergeGeometries(horizParts)!,
@@ -248,7 +283,8 @@ export function AgbGearTrain() {
       gears: GT.gearRadii.map((_, i) => buildGear(i)),
       stub: mergeGeometries(stubParts)!,
       wheel: mergeGeometries(wheelParts)!,
-      dark: mergeGeometries([plate, liner])!,
+      pump: mergeGeometries(pumpParts)!,
+      dark: mergeGeometries([plate, liner, cupWall, cupFloor])!,
     };
   }, []);
 
@@ -310,6 +346,9 @@ export function AgbGearTrain() {
     if (wheelRef.current && startSeq.starterEngaged) {
       wheelRef.current.rotation.x = hp * GT.starterRatio;
     }
+
+    // Lube gerotor: spins with its pad coupling (same gear, same rate).
+    if (pumpRef.current) pumpRef.current.rotation.y = hp * gearRate(PAD_GEAR[LUBE_PAD]);
   });
 
   // Exploded view separates major modules only — externals disappear.
@@ -369,6 +408,18 @@ export function AgbGearTrain() {
       {/* ATS turbine wheel, visible through the housing's theta slot. */}
       <group ref={wheelRef} position={[GT.starterWheel.x, ST_POS.y, ST_POS.z]}>
         <mesh geometry={G.wheel} material={M.steel} castShadow={false} />
+      </group>
+
+      {/* Lube & scavenge gerotor, spinning inside its cup below the lube pad. */}
+      <group
+        ref={pumpRef}
+        position={[
+          PADS[LUBE_PAD].x,
+          STUB_Y[LUBE_PAD] + PUMP_CUP_Y_OFF + 0.012,
+          PADS[LUBE_PAD].z,
+        ]}
+      >
+        <mesh geometry={G.pump} material={M.gear} castShadow={false} />
       </group>
     </group>
   );
