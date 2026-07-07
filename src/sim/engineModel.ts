@@ -85,6 +85,34 @@ const fanRun = (n1: number, c: EngineConfig) => smootherstep(0.03, c.idleN1, n1)
 /** Subsonic inlet total-pressure recovery (~0.98 typical). */
 const inletPressureRecovery = (mach: number) => clamp(1 - 0.03 * mach * mach, 0.9, 1.0);
 
+/**
+ * Steady overall pressure ratio vs N2 (sea-level static reference frame).
+ * Single source of truth — computeRaw, the compressor map (compressorMap.ts)
+ * and the map display all use THIS schedule. Real engines idle around OPR ~9,
+ * not ~1 — the idle anchor matters for compressor-exit temperature (and
+ * therefore idle fuel flow).
+ */
+export function steadyOprSchedule(n2: number, config: EngineConfig = defaultEngineConfig): number {
+  const cOp = coreOpFrac(n2, config);
+  const cRun = coreRun(n2, config);
+  return (
+    1 +
+    cRun *
+      (lerp(config.idleOverallPressureRatio, config.overallPressureRatioMax, Math.pow(cOp, 1.25)) - 1)
+  );
+}
+
+/**
+ * Steady surge-margin schedule [%]: ~30% headroom at idle eroding toward
+ * ~21% at takeoff — real engines run 20–30% on the operating line, highest at
+ * idle, eaten into during accel transients (the store subtracts a penalty).
+ */
+export function steadySurgeMarginPct(n2: number, config: EngineConfig = defaultEngineConfig): number {
+  const cOp = coreOpFrac(n2, config);
+  const cRun = coreRun(n2, config);
+  return clamp(30 - 9 * cOp + 2 * (1 - cRun), 0, 100);
+}
+
 /** Compressor isentropic efficiency rises with operating point. */
 const compressorEfficiency = (opFrac: number) =>
   lerp(COMPRESSOR_EFFICIENCY_LOW, COMPRESSOR_EFFICIENCY_HIGH, clamp(opFrac, 0, 1));
@@ -224,10 +252,7 @@ function computeRaw(
   // --- Pressure ratios (functions of spool operating fraction) ---
   const fanPR = 1 + fRun * (lerp(1.05, config.fanPressureRatioMax, Math.pow(fOp, 1.1)) - 1);
   const boosterPR = 1 + cRun * (lerp(1.05, config.boosterPressureRatioMax, Math.pow(cOp, 1.2)) - 1);
-  // Real engines idle around OPR ~9, not ~1 — the idle anchor matters for
-  // getting compressor-exit temperature (and therefore idle fuel flow) right.
-  const opr =
-    1 + cRun * (lerp(config.idleOverallPressureRatio, config.overallPressureRatioMax, Math.pow(cOp, 1.25)) - 1);
+  const opr = steadyOprSchedule(n2, config);
   const hpcPR = Math.max(1.01, opr / (fanPR * boosterPR));
   const compEff = compressorEfficiency(cOp);
 
@@ -341,12 +366,8 @@ function computeRaw(
     '18': mk('18', atmosphere.pressure, bypassNozzle.exitTemp, bypassNozzle.velocity, bypassMassFlow),
   };
 
-  // --- Diagnostics: surge margin ---
-  // Real engines run ~20–30% surge margin on the operating line: highest at
-  // idle, eroded toward high power, and eaten into during accel transients
-  // (the store subtracts a transient penalty). The old "100% at idle" display
-  // was fiction.
-  const surgeMarginSteady = clamp(30 - 9 * cOp + 2 * (1 - cRun), 0, 100);
+  // --- Diagnostics: surge margin (schedule shared with the compressor map) ---
+  const surgeMarginSteady = steadySurgeMarginPct(n2, config);
 
   const feasible = hpt.feasible && lpt.feasible;
 
