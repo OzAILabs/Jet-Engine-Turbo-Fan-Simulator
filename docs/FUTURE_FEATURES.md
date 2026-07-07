@@ -120,15 +120,23 @@ completed, substantially changed, or intentionally deferred.
 
 ## Planned Simulation Realism
 
-- [ ] Replace first-order spool interpolation with torque and inertia dynamics.
-- [ ] Add simplified fan and compressor maps with live operating and surge lines.
-- [ ] Add variable stator and bleed effects.
+- [x] Replace first-order spool interpolation with torque and inertia dynamics
+  (temperature-surplus torque balance, default; classic lag selectable in the
+  Engineering tier).
+- [x] Add simplified fan and compressor maps with live operating and surge
+  lines (core map with real speed lines in the corrected-flow plane,
+  generated from the cycle's own schedules; fan map still open).
+- [ ] Add variable stator and bleed effects. (Partially: VBV-fail-closed
+  surge-margin coupling landed with the surge events.)
 - [ ] Improve nozzle modeling with pressure thrust, discharge coefficients,
   installation losses, and more detailed choking behavior.
 - [x] Operating sequences and abnormal scenarios — DONE except compressor
   stall/surge events (start, light-off, EGT rise, shutdown, windmilling,
   hot/hung/no-light starts all implemented).
-- [ ] Compressor stall / surge as audible+visible events (bang, flame burp).
+- [x] Compressor stall / surge as audible+visible events: bang (dedicated
+  one-shot bus), flame belch, decaying thrust pops, EGT spike, EICAS ENG
+  SURGE latch, VBV auto-open recovery, and the "VBV fail closed" training
+  scenario that makes an idle slam genuinely surge.
 
 ## Maintenance Rule
 
