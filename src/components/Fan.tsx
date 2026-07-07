@@ -107,7 +107,40 @@ export function Fan() {
   // --- Materials (built once, reused) -------------------------------------
   // Carbon-twill composite + titanium leading-edge sheath for the big fan
   // blades — procedural CanvasTextures, see src/materials/coldSection.ts.
-  const bladeMat = useMemo(() => createFanBladeMaterial(), []);
+  //
+  // Flutter: near max N1 the blades shimmer with a 2-nodal-diameter traveling
+  // flap wave (how real bladed-disk flutter presents). Vertex-shader only:
+  // displacement is tip-weighted (uv.y = span fraction from the loft), phased
+  // by each blade's angular slot recovered from its instanceMatrix X-rotation.
+  // Frequency is slowed ~10x from a real 1st-flap mode so the eye can see it.
+  const flutterUniforms = useMemo(
+    () => ({ uTime: { value: 0 }, uFlutter: { value: 0 } }),
+    [],
+  );
+  const bladeMat = useMemo(() => {
+    const m = createFanBladeMaterial();
+    m.onBeforeCompile = (shader) => {
+      shader.uniforms.uTime = flutterUniforms.uTime;
+      shader.uniforms.uFlutter = flutterUniforms.uFlutter;
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          '#include <common>',
+          '#include <common>\nuniform float uTime;\nuniform float uFlutter;',
+        )
+        .replace(
+          '#include <begin_vertex>',
+          `#include <begin_vertex>
+#ifdef USE_INSTANCING
+{
+  float slot = atan(instanceMatrix[1][2], instanceMatrix[1][1]);
+  float tipWeight = uv.y * uv.y;
+  transformed.z += uFlutter * tipWeight * 0.028 * sin(uTime * 44.0 + slot * 2.0);
+}
+#endif`,
+        );
+    };
+    return m;
+  }, [flutterUniforms]);
 
   // Spinner + hub share a slightly lighter, more metallic hub material.
   const hubMat = useMemo(
@@ -151,12 +184,15 @@ export function Fan() {
 
   // Drive the spinner + hub spin from the live LP spool angle (no re-render),
   // and fade the motion-blur disc in with fan speed.
-  useFrame(() => {
+  useFrame((state) => {
     const { spool } = useSimStore.getState();
     spoolGroup.current.rotation.x = SPOOL_SPIN_SIGN * spool.lpAngle;
     if (blurMatRef.current) {
       blurMatRef.current.opacity = THREE.MathUtils.clamp((spool.n1 - 0.25) * 0.7, 0, 0.5);
     }
+    // Flutter onset above ~85% N1, full amplitude past the redline region.
+    flutterUniforms.uTime.value = state.clock.elapsedTime;
+    flutterUniforms.uFlutter.value = THREE.MathUtils.smoothstep(spool.n1, 0.85, 1.05);
   });
 
   return (
