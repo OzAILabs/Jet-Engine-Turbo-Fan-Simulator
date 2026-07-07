@@ -19,7 +19,7 @@
  * Subscriptions stay narrow (warnings / fault / transient slices only), so
  * unrelated UI changes never re-render this panel.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSimStore } from '../store/useSimStore';
 
 type MsgClass = 'warning' | 'caution' | 'advisory';
@@ -67,6 +67,27 @@ export function WarningPanel() {
     });
   }
   stack.sort((a, b) => CLS_ORDER[a.cls] - CLS_ORDER[b.cls]);
+
+  // A message that CLEARS gives up its acknowledgement: if the same id comes
+  // back later (a second ENG SURGE minutes after the first was cancelled), it
+  // is a NEW event and must re-light the master. Without this prune, one
+  // cancel would suppress every future recurrence of that id forever.
+  const activeIdsKey = stack
+    .map((m) => m.id)
+    .sort()
+    .join('|');
+  useEffect(() => {
+    setAcked((prev) => {
+      const active = new Set(activeIdsKey.split('|'));
+      let changed = false;
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (active.has(id)) next.add(id);
+        else changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [activeIdsKey]);
 
   const unackedOf = (cls: MsgClass) => stack.some((m) => m.cls === cls && !acked.has(m.id));
   const masterWarning = unackedOf('warning');

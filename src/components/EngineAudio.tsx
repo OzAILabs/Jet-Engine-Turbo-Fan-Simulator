@@ -44,6 +44,7 @@ export function EngineAudio() {
         soundEnabled,
         soundVolume,
         surgeActive,
+        surgeT,
       } = useSimStore.getState();
       engineAudio.setVolume(soundVolume);
 
@@ -66,6 +67,7 @@ export function EngineAudio() {
           fuelFlowKgs: instruments.fuelFlowKgs,
           vbvOpenFrac: actuation.vbvOpenFrac,
           surgeActive,
+          surgeT,
         });
       }
 

@@ -73,6 +73,12 @@ function installSequence(seq: StartSequenceState, spool: SpoolState): void {
     apuBleedPsi: 38,
     startSelector: seq.starterAirValveOpen ? 'START' : 'NORM',
     fuelControl: seq.fuelValveOpen || seq.lit ? 'RUN' : 'CUTOFF',
+    // Scenario snaps must not carry a live surge (or its penalized margin /
+    // rotor glow / EICAS latch) into the captured state.
+    surgeMargin: engine.surgeMarginSteady,
+    surgeActive: false,
+    surgeT: 0,
+    transientActive: false,
   });
 }
 

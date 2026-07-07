@@ -39,6 +39,8 @@ export interface EngineAudioFrame {
   vbvOpenFrac: number;
   /** Live compressor-surge event — fires the bang on its rising edge. */
   surgeActive: boolean;
+  /** Seconds since surge onset (0 restarts on each pop of a repeating surge). */
+  surgeT: number;
 }
 
 interface ToneLayer {
@@ -242,7 +244,7 @@ class ProceduralEngineAudio {
   private whoomphBuffer: AudioBuffer | null = null;
   private surgeBangInput: BiquadFilterNode | null = null;
   private surgeBangBuffer: AudioBuffer | null = null;
-  private prevSurge = false;
+  private lastBangAt = -10;
 
   // Per-frame memory for edge detection and look-ahead scheduling.
   private prevLit = false;
@@ -404,11 +406,16 @@ class ProceduralEngineAudio {
     }
     this.prevLit = frame.lit;
 
-    // --- Compressor surge BANG (rising edge of the store's surge event) -----
-    if (frame.surgeActive && !this.prevSurge) {
+    // --- Compressor surge BANG -----------------------------------------------
+    // Age-gated instead of edge-detected: fires only while the event is FRESH
+    // (surgeT < 0.5 s — which also restarts on each pop of a repeating surge),
+    // with a refractory second so it can't double-fire. Unmuting seconds into
+    // an old surge therefore stays silent (the whoomph's spurious-one-shot
+    // lesson), while a re-armed pop banging while unmuted still fires.
+    if (frame.surgeActive && frame.surgeT < 0.5 && now - this.lastBangAt > 1) {
       this.fireOneShot(this.surgeBangBuffer, this.surgeBangInput, now);
+      this.lastBangAt = now;
     }
-    this.prevSurge = frame.surgeActive;
   }
 
   /** Play a pre-rendered one-shot through its dedicated (never-automated) bus. */

@@ -416,21 +416,38 @@ export const useSimStore = create<SimStore>((set, get) => ({
       // Base margin = steady schedule − accel transient bite − the training
       // scenario where the VBV doors are failed CLOSED exactly where the
       // schedule wants them open (the classic way real compressors surge).
+      // The stuck-door penalty has two PHYSICAL parts, neither keyed to the
+      // lever: the steady door schedule at the current N2, plus a booster-
+      // overfeed term that builds with the ACTUAL deceleration rate (the LP
+      // side keeps delivering air the slowing core can't swallow). A chop
+      // therefore surges seconds in — as the decel develops and N2 falls
+      // into the door band — never at the instant the lever moves.
       const scheduled = computeActuation(nextSpool.n2, nextEngine.targetN2);
-      const vbvStuckPenalty = state.vbvFailClosed ? scheduled.vbvOpenFrac * 25 : 0;
-      let surgeMargin = clamp(nextEngine.surgeMarginSteady - penalty - vbvStuckPenalty, -25, 100);
+      const decelRate = Math.max(0, (state.spool.n2 - nextSpool.n2) / Math.max(dtClamped, 1e-6));
+      // Fully developed by ~0.025/s N2 decay — the rate a committed chop
+      // sustains through the door band under the torque model (measured).
+      const decelOverfeed = clamp((decelRate - 0.005) / 0.02, 0, 1);
+      const vbvStuckPenalty = state.vbvFailClosed
+        ? computeActuation(nextSpool.n2).vbvOpenFrac * 25 + decelOverfeed * 12
+        : 0;
+      const surgeMargin = clamp(nextEngine.surgeMarginSteady - penalty - vbvStuckPenalty, -25, 100);
 
+      // In this model the margin can only cross zero via the VBV failure
+      // scenario (steady floor 21% vs max transient bite 18%) — an honest
+      // limitation until deterioration/inlet-distortion effects land. The
+      // event clears once the margin has been back above the line for a
+      // couple of seconds, and RE-ARMS (fresh bang + pops) if the point is
+      // still pinned past the line — a stuck-door compressor pops repeatedly.
       let surgeActive = state.surgeActive;
       let surgeT = state.surgeT + dtClamped;
       if (!surgeActive && surgeMargin <= 0) {
         surgeActive = true; // the line is crossed — BANG
         surgeT = 0;
+      } else if (surgeActive && surgeMargin <= 0 && surgeT > 1.5) {
+        surgeT = 0; // still past the line: the next pop of a repeating surge
+      } else if (surgeActive && surgeMargin > 2 && surgeT > 2) {
+        surgeActive = false;
       }
-      // FADEC recovery: snap the VBVs open to dump booster air — restores
-      // margin immediately (unless the doors are the failure). Recovery
-      // clears after the margin has been healthy for a couple of seconds.
-      if (surgeActive && !state.vbvFailClosed) surgeMargin = clamp(surgeMargin + 12, -25, 100);
-      if (surgeActive && surgeMargin > 5 && surgeT > 2) surgeActive = false;
 
       // While surging: decaying ~1.6 Hz thrust pops + an EGT spike (reversed
       // flow re-ingests hot gas), plus the latched EICAS warning.
@@ -455,13 +472,37 @@ export const useSimStore = create<SimStore>((set, get) => ({
         };
       }
 
-      // VBV command: failed-closed pins the doors; an active surge (with
-      // healthy doors) snaps them fully open — the visible recovery action.
+      // EICAS surge-margin escalation must track the LIVE margin (the cycle
+      // only knows the steady schedule, whose floor of ~21% would make the
+      // <12/<7 warnings dead code against the transient and stuck-door
+      // penalties the student actually sees on the map).
+      {
+        const kept = engineOut.warnings.filter(
+          (w) => w.id !== 'surge-low' && w.id !== 'surge-critical',
+        );
+        if (!surgeActive && surgeMargin < 7) {
+          kept.push({
+            id: 'surge-critical',
+            severity: 'critical',
+            message: `Compressor surge margin critically low (${Math.round(surgeMargin)}%)`,
+          });
+        } else if (!surgeActive && surgeMargin < 12) {
+          kept.push({
+            id: 'surge-low',
+            severity: 'caution',
+            message: `Compressor surge margin low (${Math.round(surgeMargin)}%)`,
+          });
+        }
+        if (kept.length !== engineOut.warnings.length || kept.some((w, i) => w !== engineOut.warnings[i])) {
+          engineOut = { ...engineOut, warnings: kept };
+        }
+      }
+
+      // VBV command: failed-closed pins the doors — there is no healthy-door
+      // surge path in this model, so no door-snap recovery branch exists.
       const actuation: ActuationState = state.vbvFailClosed
         ? { ...scheduled, vbvOpenFrac: 0 }
-        : surgeActive
-          ? { ...scheduled, vbvOpenFrac: 1 }
-          : scheduled;
+        : scheduled;
 
       // Keep the sequence's thermal state synced so a future shutdown starts
       // from the real EGT (no gauge jump at the CUTOFF moment).
@@ -548,7 +589,12 @@ export const useSimStore = create<SimStore>((set, get) => ({
       fuelControl: cmdFuel,
       autoStartActive,
       instruments: buildInstruments(cfg, nextSpool, nextEngine, nextSeq),
-      actuation: computeActuation(nextSpool.n2),
+      // The stuck-doors scenario must hold through the whole start too — the
+      // sub-idle schedule would otherwise show the doors open (with the VBV
+      // groan playing) for the exact hardware the scenario declares failed.
+      actuation: state.vbvFailClosed
+        ? { ...computeActuation(nextSpool.n2), vbvOpenFrac: 0 }
+        : computeActuation(nextSpool.n2),
     });
   },
 
@@ -634,11 +680,16 @@ export const useSimStore = create<SimStore>((set, get) => ({
       engine,
       spool,
       surgeMargin: engine.surgeMarginSteady,
+      surgeActive: false,
+      surgeT: 0,
+      transientActive: false,
       startSeq,
       fuelControl: 'RUN',
       startSelector: 'NORM',
       instruments: buildInstruments(get().config, spool, engine, startSeq),
-      actuation: computeActuation(spool.n2),
+      actuation: get().vbvFailClosed
+        ? { ...computeActuation(spool.n2), vbvOpenFrac: 0 }
+        : computeActuation(spool.n2),
     });
   },
   resetToCruise: () => {
@@ -650,11 +701,16 @@ export const useSimStore = create<SimStore>((set, get) => ({
       engine,
       spool,
       surgeMargin: engine.surgeMarginSteady,
+      surgeActive: false,
+      surgeT: 0,
+      transientActive: false,
       startSeq,
       fuelControl: 'RUN',
       startSelector: 'NORM',
       instruments: buildInstruments(get().config, spool, engine, startSeq),
-      actuation: computeActuation(spool.n2),
+      actuation: get().vbvFailClosed
+        ? { ...computeActuation(spool.n2), vbvOpenFrac: 0 }
+        : computeActuation(spool.n2),
     });
   },
   resetToColdDark: () => {
@@ -667,6 +723,9 @@ export const useSimStore = create<SimStore>((set, get) => ({
       engine,
       spool,
       surgeMargin: engine.surgeMarginSteady,
+      surgeActive: false,
+      surgeT: 0,
+      transientActive: false,
       startSeq,
       fuelControl: 'CUTOFF',
       startSelector: 'NORM',
@@ -674,7 +733,9 @@ export const useSimStore = create<SimStore>((set, get) => ({
       apuBleedPsi: 0,
       autoStartActive: false,
       instruments: buildInstruments(get().config, spool, engine, startSeq),
-      actuation: computeActuation(spool.n2),
+      actuation: get().vbvFailClosed
+        ? { ...computeActuation(spool.n2), vbvOpenFrac: 0 }
+        : computeActuation(spool.n2),
     });
   },
 }));

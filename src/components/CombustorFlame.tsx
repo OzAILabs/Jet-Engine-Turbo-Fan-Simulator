@@ -216,6 +216,7 @@ export function CombustorFlame(props: { length: number }) {
   // Ignition event state (refs — no React re-render involvement).
   const prevLit = useRef(false);
   const prevSurge = useRef(false);
+  const prevSurgeT = useRef(0);
   const ignite = useRef(0);
   const burst = useRef(0);
   const litSmooth = useRef(0);
@@ -234,9 +235,12 @@ export function CombustorFlame(props: { length: number }) {
     }
     prevLit.current = lit;
 
-    // SURGE: reversed airflow belches flame — full burst on the event edge.
-    if (surgeActive && !prevSurge.current) burst.current = 1;
+    // SURGE: reversed airflow belches flame — full burst on the event edge
+    // AND on each re-armed pop of a repeating surge (surgeT snaps back to 0).
+    const { surgeT } = useSimStore.getState();
+    if (surgeActive && (!prevSurge.current || surgeT < prevSurgeT.current)) burst.current = 1;
     prevSurge.current = surgeActive;
+    prevSurgeT.current = surgeT;
 
     if (lit) ignite.current = Math.min(1, ignite.current + dt / IGNITE_SWEEP_S);
     else ignite.current = Math.max(0, ignite.current - dt * 4);
