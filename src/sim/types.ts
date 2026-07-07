@@ -66,6 +66,14 @@ export interface StationState {
   massFlow: number;
   /** X position of the station along the engine axis [scene units = m]. */
   x: number;
+  /**
+   * Specific entropy relative to ISA sea level [J/(kg·K)]:
+   * s = cp·ln(T/288.15) − R·ln(P/101325). Ideal-gas, R_AIR for both streams
+   * (same approximation the rest of the cycle uses). Powers the T-s diagram.
+   */
+  entropy: number;
+  /** Specific enthalpy relative to ISA sea level [J/kg]: h = cp·(T − 288.15). */
+  enthalpy: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -134,6 +142,12 @@ export interface EngineConfig {
   idleTurbineInletTemp: number;
   takeoffTurbineInletTemp: number;
   turbineInletTempRedline: number;
+  /**
+   * Fraction of core flow tapped at HPC discharge to cool the HPT (bookkeeping
+   * for display/teaching — the cycle itself is calibrated with cooling losses
+   * folded into component efficiencies). Typical big turbofans run 6–10%.
+   */
+  coolingBleedFraction: number;
 
   // Displayed EGT (T49, LPT inlet) limits [°C] — certified values from the TCDS.
   egtTakeoffLimitC: number; // 5-minute takeoff limit
@@ -215,6 +229,14 @@ export interface EngineState {
   compressorExitTemp: number; // Tt3
   compressorExitPressure: number; // Pt3
   turbineInletTemp: number; // Tt4
+  /** Turbine-cooling bleed (display bookkeeping — see EngineConfig). */
+  coolingBleedFraction: number;
+  /** Cooling air tapped at HPC discharge [kg/s]. */
+  coolingBleedFlow: number;
+  /** Mixed gas temperature the HPT ROTOR actually sees [K]: film-cooling air
+   *  (at Tt3) blended into the combustor exit stream. Always between Tt3 and Tt4
+   *  — the teaching point for why blades survive gas hotter than their metal. */
+  hptRotorInletTemp: number;
   hptExitTemp: number; // Tt45
   exhaustGasTemp: number; // Tt5 (LPT exit)
   /**

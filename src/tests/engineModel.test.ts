@@ -192,3 +192,52 @@ describe('engine model — robustness', () => {
     expect(id.surgeMarginSteady).toBeLessThan(35);
   });
 });
+
+describe('station thermodynamic transparency (entropy/enthalpy/cooling)', () => {
+  it('entropy rises across the combustor (heat addition, station 3 → 4)', () => {
+    const s = computeEngineState(takeoff);
+    expect(s.stations['4'].entropy).toBeGreaterThan(s.stations['3'].entropy);
+  });
+
+  it('real compression generates entropy (station 2 → 3, non-isentropic)', () => {
+    const s = computeEngineState(takeoff);
+    expect(s.stations['3'].entropy).toBeGreaterThan(s.stations['2'].entropy);
+  });
+
+  it('enthalpy climbs through the compressor and peaks at the combustor exit', () => {
+    const s = computeEngineState(takeoff);
+    expect(s.stations['3'].enthalpy).toBeGreaterThan(s.stations['2'].enthalpy);
+    expect(s.stations['4'].enthalpy).toBeGreaterThan(s.stations['3'].enthalpy);
+    expect(s.stations['45'].enthalpy).toBeLessThan(s.stations['4'].enthalpy);
+  });
+
+  it('freestream entropy/enthalpy sit at the ISA sea-level reference (≈0)', () => {
+    const s = computeEngineState(takeoff);
+    expect(Math.abs(s.stations['0'].entropy)).toBeLessThan(1);
+    expect(Math.abs(s.stations['0'].enthalpy)).toBeLessThan(1000);
+  });
+
+  it('per-stage data covers the full 22-stage gas path', () => {
+    const s = computeEngineState(takeoff);
+    // 1 fan + 4 booster + 9 HPC + 2 HPT + 6 LPT
+    expect(s.stages.length).toBe(
+      1 + cfg.boosterStages + cfg.hpcStages + cfg.hptStages + cfg.lptStages,
+    );
+    // Pressure rises through every compressor stage, falls through every turbine stage.
+    for (const st of s.stages) {
+      if (st.section === 'hpt' || st.section === 'lpt') {
+        expect(st.pOut).toBeLessThan(st.pIn);
+      } else {
+        expect(st.pOut).toBeGreaterThan(st.pIn);
+      }
+    }
+  });
+
+  it('HPT rotor-inlet temperature sits between Tt3 and Tt4 (cooling blend)', () => {
+    const s = computeEngineState(takeoff);
+    expect(s.coolingBleedFraction).toBeCloseTo(cfg.coolingBleedFraction, 5);
+    expect(s.coolingBleedFlow).toBeCloseTo(s.coreMassFlow * cfg.coolingBleedFraction, 6);
+    expect(s.hptRotorInletTemp).toBeGreaterThan(s.compressorExitTemp);
+    expect(s.hptRotorInletTemp).toBeLessThan(s.turbineInletTemp);
+  });
+});

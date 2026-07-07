@@ -59,6 +59,7 @@ export const defaultEngineConfig: EngineConfig = {
   idleTurbineInletTemp: 950, // [EST] consistent with idle FF + idle core flow
   takeoffTurbineInletTemp: 1780, // [EST] 115k-class TIT ~1,700–1,900 K; tuned for FF 4.6–4.7 kg/s
   turbineInletTempRedline: 1900,
+  coolingBleedFraction: 0.08, // [EST] big turbofans tap ~6–10% of core flow for HPT cooling
 
   // Displayed EGT (T49, LPT inlet) limits [°C] [TCDS]
   egtTakeoffLimitC: 1090,

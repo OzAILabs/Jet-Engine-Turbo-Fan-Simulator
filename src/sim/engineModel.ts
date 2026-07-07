@@ -137,6 +137,18 @@ function axialVelocity(massFlow: number, pt: number, tt: number, area: number): 
   return clamp(massFlow / Math.max(rho * area, EPS), 0, 1200);
 }
 
+/**
+ * Ideal-gas specific entropy relative to ISA sea level [J/(kg·K)].
+ * s = cp·ln(T/Tref) − R·ln(P/Pref). R_AIR serves both streams — the same
+ * approximation the rest of the cycle makes for combustion gas.
+ */
+function specificEntropy(t: number, p: number, cp: number): number {
+  return (
+    cp * Math.log(Math.max(t, EPS) / ISA_SEA_LEVEL_TEMP) -
+    R_AIR * Math.log(Math.max(p, EPS) / ISA_SEA_LEVEL_PRESSURE)
+  );
+}
+
 const stationName: Record<StationId, string> = {
   '0': 'Freestream',
   '2': 'Fan Face / Inlet',
@@ -284,14 +296,36 @@ function computeRaw(
     ...lpt.stages,
   ];
 
+  // --- Turbine-cooling bleed (display bookkeeping) --------------------------
+  // Real HPTs survive gas hotter than their blade metal because ~6–10% of the
+  // core flow is tapped at HPC discharge (Tt3) and film-cooled through the
+  // vanes/blades. The cycle folds cooling losses into component efficiencies,
+  // so this is DERIVED for the readouts: the mixed temperature the rotor sees.
+  const bleedFrac = clamp(config.coolingBleedFraction ?? 0, 0, 0.15);
+  const coolingBleedFlow = bleedFrac * coreMassFlow;
+  const hptRotorInletTemp =
+    (1 - bleedFrac) * turbineInlet.t + bleedFrac * compressorExit.t;
+
   // --- Stations ---
+  // Entropy/enthalpy use CP_AIR up to the combustor and CP_GAS after it.
   const mk = (
     id: StationId,
     pressure: number,
     temperature: number,
     velocity: number,
     massFlow: number,
-  ): StationState => ({ id, name: stationName[id], pressure, temperature, velocity, massFlow, x: STATION_X[id] });
+    cp: number = CP_AIR,
+  ): StationState => ({
+    id,
+    name: stationName[id],
+    pressure,
+    temperature,
+    velocity,
+    massFlow,
+    x: STATION_X[id],
+    entropy: specificEntropy(temperature, pressure, cp),
+    enthalpy: cp * (temperature - ISA_SEA_LEVEL_TEMP),
+  });
 
   const A = config.stationAreas;
   const stations: Record<StationId, StationState> = {
@@ -300,10 +334,10 @@ function computeRaw(
     '13': mk('13', bypassDuct.p, bypassDuct.t, axialVelocity(bypassMassFlow, bypassDuct.p, bypassDuct.t, A['13']), bypassMassFlow),
     '25': mk('25', booster.exit.p, booster.exit.t, axialVelocity(coreMassFlow, booster.exit.p, booster.exit.t, A['25']), coreMassFlow),
     '3': mk('3', compressorExit.p, compressorExit.t, axialVelocity(coreMassFlow, compressorExit.p, compressorExit.t, A['3']), coreMassFlow),
-    '4': mk('4', turbineInlet.p, turbineInlet.t, axialVelocity(gasMassFlow, turbineInlet.p, turbineInlet.t, A['4']), gasMassFlow),
-    '45': mk('45', hpt.exit.p, hpt.exit.t, axialVelocity(gasMassFlow, hpt.exit.p, hpt.exit.t, A['45']), gasMassFlow),
-    '5': mk('5', lpt.exit.p, lpt.exit.t, axialVelocity(gasMassFlow, lpt.exit.p, lpt.exit.t, A['5']), gasMassFlow),
-    '8': mk('8', atmosphere.pressure, coreNozzle.exitTemp, coreNozzle.velocity, gasMassFlow),
+    '4': mk('4', turbineInlet.p, turbineInlet.t, axialVelocity(gasMassFlow, turbineInlet.p, turbineInlet.t, A['4']), gasMassFlow, CP_GAS),
+    '45': mk('45', hpt.exit.p, hpt.exit.t, axialVelocity(gasMassFlow, hpt.exit.p, hpt.exit.t, A['45']), gasMassFlow, CP_GAS),
+    '5': mk('5', lpt.exit.p, lpt.exit.t, axialVelocity(gasMassFlow, lpt.exit.p, lpt.exit.t, A['5']), gasMassFlow, CP_GAS),
+    '8': mk('8', atmosphere.pressure, coreNozzle.exitTemp, coreNozzle.velocity, gasMassFlow, CP_GAS),
     '18': mk('18', atmosphere.pressure, bypassNozzle.exitTemp, bypassNozzle.velocity, bypassMassFlow),
   };
 
@@ -350,6 +384,9 @@ function computeRaw(
     compressorExitTemp: compressorExit.t,
     compressorExitPressure: compressorExit.p,
     turbineInletTemp: turbineInlet.t,
+    coolingBleedFraction: bleedFrac,
+    coolingBleedFlow,
+    hptRotorInletTemp,
     hptExitTemp: hpt.exit.t,
     exhaustGasTemp: lpt.exit.t,
     egtC,

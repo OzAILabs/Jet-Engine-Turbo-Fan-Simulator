@@ -156,6 +156,14 @@ function StationMarker({ id, station, showLabel, selected, exploded, onSelect, o
                 <span className="sc-k">Mass flow</span>
                 <span className="sc-v">{station.massFlow.toFixed(0)} kg/s</span>
               </div>
+              <div className="sc-row">
+                <span className="sc-k">Enthalpy h</span>
+                <span className="sc-v">{(station.enthalpy / 1000).toFixed(0)} kJ/kg</span>
+              </div>
+              <div className="sc-row">
+                <span className="sc-k">Entropy s</span>
+                <span className="sc-v">{station.entropy.toFixed(0)} J/(kg·K)</span>
+              </div>
             </div>
 
             <p className="sc-explain">{STATION_COPY[id].explanation}</p>
