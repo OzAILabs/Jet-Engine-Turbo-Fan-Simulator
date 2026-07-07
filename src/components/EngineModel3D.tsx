@@ -35,6 +35,7 @@ import { FuelIgnitionSystem } from './externals/FuelIgnitionSystem';
 import { CompressorBleedSystems } from './externals/CompressorBleedSystems';
 import { CaseDetail } from './externals/CaseDetail';
 import { HarnessAndSensors } from './externals/HarnessAndSensors';
+import { SecondaryFlows } from './SecondaryFlows';
 
 /** Axial center of each major module, used to spread them in exploded view. */
 const MODULE_CENTERS = {
@@ -153,6 +154,9 @@ export function EngineModel3D() {
         {layers.airBleed && <CompressorBleedSystems />}
         {layers.caseDetail && <CaseDetail />}
         {layers.electrical && <HarnessAndSensors />}
+        {/* Oil circuit / VBV dump / cooling-air particle runs (overlay-toggled;
+            gates its own layers internally, hides itself when exploded). */}
+        <SecondaryFlows />
       </group>
     </>
   );

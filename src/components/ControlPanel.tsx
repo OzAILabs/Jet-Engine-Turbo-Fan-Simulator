@@ -49,7 +49,8 @@ const TOGGLES: {
     | 'showSectionLabels'
     | 'showFlowParticles'
     | 'showTempColors'
-    | 'showVelocityVectors';
+    | 'showVelocityVectors'
+    | 'showSecondaryFlows';
   label: string;
 }[] = [
   { key: 'showStationLabels', label: 'Station labels' },
@@ -57,6 +58,7 @@ const TOGGLES: {
   { key: 'showFlowParticles', label: 'Flow particles' },
   { key: 'showTempColors', label: 'Temp/pressure colors' },
   { key: 'showVelocityVectors', label: 'Velocity vectors' },
+  { key: 'showSecondaryFlows', label: 'Secondary flows (oil / bleed / cooling)' },
 ];
 
 export function ControlPanel() {
@@ -75,6 +77,7 @@ export function ControlPanel() {
   const showFlowParticles = useSimStore((s) => s.showFlowParticles);
   const showTempColors = useSimStore((s) => s.showTempColors);
   const showVelocityVectors = useSimStore((s) => s.showVelocityVectors);
+  const showSecondaryFlows = useSimStore((s) => s.showSecondaryFlows);
 
   // Actions (stable identities from Zustand; safe to read non-reactively-ish).
   const setAltitude = useSimStore((s) => s.setAltitude);
@@ -108,6 +111,7 @@ export function ControlPanel() {
     showFlowParticles,
     showTempColors,
     showVelocityVectors,
+    showSecondaryFlows,
   };
 
   // ISA offset is signed (deviation from the standard atmosphere), so show a sign.

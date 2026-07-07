@@ -209,6 +209,8 @@ export interface SimStore {
   showFlowParticles: boolean;
   showTempColors: boolean;
   showVelocityVectors: boolean;
+  /** Secondary flows: oil circuit, VBV dump air, HPT cooling air. */
+  showSecondaryFlows: boolean;
   soundEnabled: boolean;
   soundVolume: number;
   /** Presentation mode: overlays + floor grid hidden AT THEIR RENDER SITES,
@@ -276,7 +278,8 @@ type ToggleKey =
   | 'showSectionLabels'
   | 'showFlowParticles'
   | 'showTempColors'
-  | 'showVelocityVectors';
+  | 'showVelocityVectors'
+  | 'showSecondaryFlows';
 
 // Cold-and-dark boot state.
 const initialSpool: SpoolState = { n1: 0, n2: 0, lpAngle: 0, hpAngle: 0, tt4: 288.15 };
@@ -344,6 +347,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
   showFlowParticles: true,
   showTempColors: true,
   showVelocityVectors: false,
+  showSecondaryFlows: false,
   // Sound defaults ON; the actual AudioContext can only start after the first
   // user gesture (browser autoplay policy), which EngineAudio arms on mount.
   soundEnabled: true,
