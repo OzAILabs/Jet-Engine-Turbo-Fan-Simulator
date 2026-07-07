@@ -89,6 +89,15 @@ completed, substantially changed, or intentionally deferred.
   (T-s diagram raw material), turbine-cooling bleed bookkeeping
   (coolingBleedFraction/Flow, hptRotorInletTemp), h & s in the station cards,
   6 new contract tests.
+- [x] **Phase 5 scenarios & deployment**: failure injection (bird strike with
+  decaying vibration/EGT/thrust effects + service-age deterioration eroding
+  the EGT margin, both store-tested) and classroom share links (hash-encoded
+  scenario/view/tier/section-cut, restored on boot). Deferred to the next
+  program wave, each for a concrete reason: what-if design labs (OPR/BPR/TIT
+  overrides need a config-identity-aware recalibration path), teacher
+  control lock (needs a session/role concept), thrust reverser + cowl
+  opening (large geometry package — deserves its own branch and the owner's
+  eye on the kinematics).
 - [x] **Phase 4 classroom**: live T–s diagram (the Brayton cycle drawn by the
   running engine), 29-term audience-gated glossary in the sim's own
   conventions, five guided lessons driving the real simulator (incl. the

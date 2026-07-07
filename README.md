@@ -38,6 +38,36 @@ npm test         # run the simulation unit tests (Vitest)
 See [Future Features and Realism Roadmap](docs/FUTURE_FEATURES.md) for completed
 realism milestones, work in progress, and prioritized future improvements.
 
+## The Learning Platform (2026-07)
+
+Built for three audiences — high-school explorers, propulsion students, and
+engineers — selectable as **Audience tiers** (Explore / Course / Engineering):
+
+- **Guided lessons**: five narrated tours that drive the live simulator —
+  "How a turbofan makes thrust", the cold-and-dark start, the Brayton cycle
+  station by station, the surge lab (it really surges), and the oil/cooling/
+  FADEC life-support tour.
+- **Challenges judged by the physics**: gentle start (EGT < 700 °C), margin
+  keeper (100% N2 without eating the surge margin), hot-day derate — every
+  one provably winnable, with the obvious wrong approach provably losing.
+- **Real physics**: torque-balance spool dynamics (temperature leads, speed
+  follows; the core responds before the fan), a compressor map with real
+  speed lines generated from the cycle itself, and compressor surge as a
+  genuine event — bang, flame belch, thrust pops, ENG SURGE latch — via the
+  "VBV fail closed" training scenario.
+- **Anatomy tools**: 12 independently toggleable system layers, a section cut
+  (slice the engine along any axis), an assembly-tree explorer with story
+  cards and fly-to camera, secondary-flow particles (the oil circuit, VBV
+  dump air, HPT cooling air), and a live T–s diagram drawn by the running
+  engine.
+- **Failure injection**: bird strike (vibration, EGT spike, rippling thrust)
+  and a service-age slider that erodes the EGT margin like real time-on-wing.
+- **Classroom share links**: one URL restores the exact scenario, view, tier
+  and section cut for every student.
+- **A 29-term glossary** written in the sim's own conventions, limit-explainer
+  tooltips on the EICAS gauges, and "the math, live" — textbook equations
+  with this moment's numbers substituted in.
+
 ## What you can do
 
 - **Start the engine for real**: flip out the ENGINE START panel, switch the APU
