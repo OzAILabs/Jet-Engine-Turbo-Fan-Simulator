@@ -13,6 +13,7 @@
  */
 import { useMemo } from 'react';
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { useSimStore } from '../store/useSimStore';
 import { AXIS, RADII } from '../data/engineLayout';
 import { CUTAWAY, createTube } from '../geometry/annularSection';
@@ -61,6 +62,49 @@ export function Combustor() {
   const nozzleGeo = useMemo(() => new THREE.CylinderGeometry(0.03, 0.03, 0.12, 12), []);
   const nozzleMat = useMemo(
     () => new THREE.MeshStandardMaterial({ color: '#5a6470', metalness: 0.8, roughness: 0.35 }),
+    [],
+  );
+
+  // --- Swirlers + dual-orifice tips (ONE merged mesh for all 16) ----------
+  // The flame isn't held by magic: each fuel nozzle exits through a SWIRLER —
+  // a ring of pitched vanes that spins the incoming air into a recirculating
+  // vortex anchoring combustion — around a dual-orifice atomizer tip. Collar
+  // + 8 pitched vanes + tip cone per nozzle, merged: +1 draw call total.
+  const swirlerGeo = useMemo(() => {
+    const parts: THREE.BufferGeometry[] = [];
+    const tipX = AXIS.combustorStart + 0.125 - xCenter;
+    for (let k = 0; k < NUM_FUEL_NOZZLES; k++) {
+      const theta = (k / NUM_FUEL_NOZZLES) * Math.PI * 2;
+      const y = Math.cos(theta) * FUEL_NOZZLE_RADIUS;
+      const z = Math.sin(theta) * FUEL_NOZZLE_RADIUS;
+      const collar = new THREE.CylinderGeometry(0.065, 0.075, 0.035, 16, 1, true);
+      collar.rotateZ(-Math.PI / 2); // axis → +X (downstream)
+      collar.translate(tipX, y, z);
+      parts.push(collar);
+      for (let v = 0; v < 8; v++) {
+        const a = (v / 8) * Math.PI * 2;
+        // Vane: chord along X, span radial (+Y before ring placement), thin in
+        // Z; pitched about its RADIAL axis for the swirl angle, then swung to
+        // its ring slot about the nozzle axis and planted on the collar.
+        const vane = new THREE.BoxGeometry(0.026, 0.032, 0.006);
+        vane.rotateY(0.65); // the swirl pitch
+        vane.translate(0, 0.048, 0);
+        vane.rotateX(a);
+        vane.translate(tipX, y, z);
+        parts.push(vane);
+      }
+      const tip = new THREE.ConeGeometry(0.017, 0.034, 10);
+      tip.rotateZ(-Math.PI / 2); // point downstream
+      tip.translate(tipX + 0.025, y, z);
+      parts.push(tip);
+    }
+    const merged = mergeGeometries(parts)!;
+    parts.forEach((g) => g.dispose());
+    return merged;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const swirlerMat = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: '#4a4c50', metalness: 0.85, roughness: 0.45 }),
     [],
   );
 
@@ -128,6 +172,9 @@ export function Combustor() {
           rotation={n.rotation}
         />
       ))}
+
+      {/* Swirler vanes + atomizer tips at every fuel-nozzle exit. */}
+      <mesh geometry={swirlerGeo} material={swirlerMat} castShadow={false} />
 
       {/* Dilution holes dotted along the outer liner. */}
       {holes.map((p, i) => (
