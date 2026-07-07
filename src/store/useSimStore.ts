@@ -15,7 +15,7 @@
  */
 import { create } from 'zustand';
 import { computeEngineState, equilibriumDynamics } from '../sim/engineModel';
-import { advanceSpools, transientSurgePenalty } from '../sim/spoolDynamics';
+import { advanceSpools, advanceSpoolsTorque, transientSurgePenalty } from '../sim/spoolDynamics';
 import { computeActuation, type ActuationState } from '../sim/actuation';
 import {
   advanceStartSequence,
@@ -177,6 +177,12 @@ export interface SimStore {
   layers: LayersState;
   /** Audience tier (progressive disclosure of the analytical panels). */
   learningMode: LearningMode;
+  /**
+   * Above-idle spool integrator: 'torque' = temperature-surplus torque balance
+   * (Tt4 is a real state in the loop; the spool visibly accelerates);
+   * 'lag' = the classic first-order lags (legacy fallback).
+   */
+  spoolModel: 'torque' | 'lag';
   exhaustStyle: ExhaustStyle;
   cameraMode: CameraMode;
   cameraCommand: CameraCommand;
@@ -222,6 +228,7 @@ export interface SimStore {
   toggleLayer: (id: LayerId) => void;
   setAllLayers: (on: boolean) => void;
   setLearningMode: (m: LearningMode) => void;
+  setSpoolModel: (m: 'torque' | 'lag') => void;
   setExhaustStyle: (s: ExhaustStyle) => void;
   setCameraMode: (m: CameraMode) => void;
   setCameraPreset: (p: CameraPreset) => void;
@@ -304,6 +311,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
   // Engineering by default: existing users keep the full panel set; the
   // audience picker makes the lighter tiers discoverable.
   learningMode: 'engineering',
+  spoolModel: 'torque',
   exhaustStyle: 'shader', // 'Dramatic' bright plume by default
   cameraMode: 'orthographic',
   cameraCommand: { kind: 'reset', preset: 'iso', focusPoint: null, nonce: 0 },
@@ -369,15 +377,25 @@ export const useSimStore = create<SimStore>((set, get) => ({
     }
 
     if (seq.runState === 'running') {
-      // --- Running regime: first-order lags toward the throttle targets. ---
-      const nextSpool = advanceSpools(
-        state.spool,
-        state.engine.targetN1,
-        state.engine.targetN2,
-        state.engine.tt4Steady,
-        dtClamped,
-        cfg,
-      );
+      // --- Running regime: torque balance (default) or the classic lags. ---
+      const nextSpool =
+        state.spoolModel === 'torque'
+          ? advanceSpoolsTorque(
+              state.spool,
+              state.engine.targetN1,
+              state.engine.targetN2,
+              dtClamped,
+              cfg,
+              state.inputs.isaTempOffsetC,
+            )
+          : advanceSpools(
+              state.spool,
+              state.engine.targetN1,
+              state.engine.targetN2,
+              state.engine.tt4Steady,
+              dtClamped,
+              cfg,
+            );
       const nextEngine = computeEngineState(state.inputs, cfg, nextSpool);
       const penalty = transientSurgePenalty(nextEngine.targetN2, nextSpool.n2);
       const surgeMargin = clamp(nextEngine.surgeMarginSteady - penalty, 0, 100);
@@ -476,6 +494,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
       layers: Object.fromEntries(LAYER_IDS.map((id) => [id, on])) as LayersState,
     })),
   setLearningMode: (m) => set({ learningMode: m }),
+  setSpoolModel: (m) => set({ spoolModel: m }),
   setExhaustStyle: (s) => set({ exhaustStyle: s }),
   setCameraMode: (m) => set({ cameraMode: m }),
   setCameraPreset: (p) =>

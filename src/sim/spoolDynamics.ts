@@ -68,3 +68,92 @@ export function transientSurgePenalty(targetN2: number, currentN2: number): numb
   // ~30% steady margin — uncomfortable but survivable, like the real thing.
   return Math.min(18, gap * 45);
 }
+
+// ---------------------------------------------------------------------------
+// Torque-balance HP-spool dynamics (the physical alternative to the N2 lag).
+//
+// The real chain: lever → fuel schedule → turbine-inlet temperature → excess
+// turbine work over compressor demand → net shaft torque → J·dω/dt. We model
+// it with TEMPERATURE as the torque proxy — excess Tt4 over the value that
+// merely HOLDS the current speed is proportional to surplus turbine specific
+// work, i.e. net accelerating torque:
+//
+//   tt4Cmd  = tt4Req(N2) + G·(targetN2 − N2)      (the EEC fuel schedule:
+//              over-fuels on accel, chops below the holding value on decel)
+//   dTt4/dt = (tt4Cmd − tt4)/τ_T                   (combustor thermal lag)
+//   dN2/dt  = (tt4 − tt4Req(N2)) / K               (rotor inertia)
+//
+// Equilibrium is IDENTICAL to the classic lag by construction: dN2 = 0 forces
+// tt4 = tt4Req(N2) and N2 = targetN2 — the same steady points the cycle and
+// all calibration anchors use. Linearized, the pair forms an overdamped
+// second-order response (ζ ≈ 1.3 mid-range) with a ~10 s idle→takeoff time —
+// and, unlike the lag, the spool visibly ACCELERATES (torque builds first,
+// speed follows) and Tt4 leads N2 exactly as a real accel trace shows.
+// ---------------------------------------------------------------------------
+
+/** EEC fuel-schedule authority [K per unit N2 error] — same scale as the cycle's accel bump. */
+export const FUEL_AUTHORITY_K = 1400;
+/** HP rotor "thermal inertia" [K·s per unit dN2/dt]: K = τ_want · G. */
+export const HP_TORQUE_GAIN = 1400;
+/** Slew guard [1/s] — no physical spool changes speed faster than this. */
+const MAX_N2_RATE = 0.15;
+
+/**
+ * Steady Tt4 required to HOLD a given N2 (no accel/decel bias) — mirrors the
+ * cycle's tt4Running schedule in engineModel.ts computeRaw().
+ */
+export function tt4Required(n2: number, config: EngineConfig, isaTempOffsetC = 0): number {
+  const cOp = Math.min(1, Math.max(0, (n2 - config.idleN2) / (config.takeoffN2 - config.idleN2)));
+  return (
+    config.idleTurbineInletTemp +
+    Math.pow(cOp, 1.1) * (config.takeoffTurbineInletTemp - config.idleTurbineInletTemp) +
+    isaTempOffsetC * 3
+  );
+}
+
+/**
+ * Advance the running-regime state with the torque-balance model. The LP
+ * spool stays a first-order follower (it IS the heavy slow partner — its lag
+ * behind the HP spool is the physics being taught), and Tt4 becomes a real
+ * state in the loop rather than a display lag.
+ */
+export function advanceSpoolsTorque(
+  prev: SpoolState,
+  targetN1: number,
+  targetN2: number,
+  dt: number,
+  config: EngineConfig,
+  isaTempOffsetC = 0,
+): SpoolState {
+  // EEC fuel schedule → commanded TIT, floored at a flame-holding minimum and
+  // capped just past redline (the EEC's own topping limiter).
+  const req = tt4Required(prev.n2, config, isaTempOffsetC);
+  const tt4Cmd = Math.min(
+    Math.max(req + FUEL_AUTHORITY_K * (targetN2 - prev.n2), config.idleTurbineInletTemp * 0.9),
+    config.turbineInletTempRedline + 40,
+  );
+
+  // Combustor/hot-section thermal lag (exact first-order step).
+  const aT = 1 - Math.exp(-dt / TT4_TIME_CONSTANT);
+  const tt4 = prev.tt4 + (tt4Cmd - prev.tt4) * aT;
+
+  // Rotor: net torque ∝ temperature surplus over the speed-holding value.
+  const dN2 = Math.max(-MAX_N2_RATE, Math.min(MAX_N2_RATE, (tt4 - req) / HP_TORQUE_GAIN)) * dt;
+  // FADEC idle governor floor + redline-region ceiling.
+  const n2 = Math.min(Math.max(prev.n2 + dN2, config.idleN2 * 0.985), config.takeoffN2 + 0.03);
+
+  // LP spool: heavy first-order follower (unchanged physics story).
+  const a1 = 1 - Math.exp(-dt / N1_TIME_CONSTANT);
+  const n1 = prev.n1 + (targetN1 - prev.n1) * a1;
+
+  const lpOmega = n1 * config.n1RatedRpm * TWO_PI_OVER_60;
+  const hpOmega = n2 * config.n2RatedRpm * TWO_PI_OVER_60;
+
+  return {
+    n1,
+    n2,
+    tt4,
+    lpAngle: prev.lpAngle + lpOmega * dt,
+    hpAngle: prev.hpAngle + hpOmega * dt,
+  };
+}

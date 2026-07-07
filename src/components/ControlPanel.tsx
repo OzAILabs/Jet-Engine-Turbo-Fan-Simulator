@@ -82,6 +82,8 @@ export function ControlPanel() {
   const setIsaOffset = useSimStore((s) => s.setIsaOffset);
   const learningMode = useSimStore((s) => s.learningMode);
   const setLearningMode = useSimStore((s) => s.setLearningMode);
+  const spoolModel = useSimStore((s) => s.spoolModel);
+  const setSpoolModel = useSimStore((s) => s.setSpoolModel);
   const setViewMode = useSimStore((s) => s.setViewMode);
   const toggleLayer = useSimStore((s) => s.toggleLayer);
   const setAllLayers = useSimStore((s) => s.setAllLayers);
@@ -289,6 +291,29 @@ export function ControlPanel() {
           </label>
         ))}
       </div>
+
+      {/* --- Spool physics model (Engineering tier) ----------------------- */}
+      {learningMode === 'engineering' && (
+        <div className="panel-section">
+          <div className="panel-subtitle">Spool Dynamics</div>
+          <div className="seg">
+            <button
+              className={`seg-btn${spoolModel === 'torque' ? ' is-active' : ''}`}
+              title="Temperature-surplus torque balance: Tt4 is a real state; torque builds first, speed follows."
+              onClick={() => setSpoolModel('torque')}
+            >
+              Torque balance
+            </button>
+            <button
+              className={`seg-btn${spoolModel === 'lag' ? ' is-active' : ''}`}
+              title="Classic first-order lags (legacy)."
+              onClick={() => setSpoolModel('lag')}
+            >
+              Classic lag
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* --- Simulation buttons ------------------------------------------ */}
       <div className="panel-section">
