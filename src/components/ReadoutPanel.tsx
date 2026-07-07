@@ -13,6 +13,7 @@
  * Every numeric readout is guarded against non-finite values (NaN / Infinity)
  * so a transient infeasible solution shows "--" instead of a broken number.
  */
+import { useState } from 'react';
 import { useSimStore } from '../store/useSimStore';
 import {
   newtonsToKn,
@@ -52,6 +53,9 @@ export function ReadoutPanel() {
   const surgeMargin = useSimStore((s) => s.surgeMargin);
   const redline = useSimStore((s) => s.config.turbineInletTempRedline);
   const egtTakeoffLimitC = useSimStore((s) => s.config.egtTakeoffLimitC);
+
+  // Live-formula section visibility (local UI state).
+  const [showMath, setShowMath] = useState(false);
 
   // Pre-compute the warn flags once (keeps the JSX readable).
   const turbineHot = engine.turbineInletTemp > redline;
@@ -116,6 +120,13 @@ export function ReadoutPanel() {
         />
         {/* EGT is the certified T49 (LPT inlet) the real EICAS displays. */}
         <Readout label="EGT (T49)" value={fmt(instruments.egtC, 0)} unit="degC" warn={egtHot} />
+        {/* The blended temperature the HPT rotor actually sees after ~8% of
+            core air (tapped at Tt3) film-cools the first stage. */}
+        <Readout
+          label="HPT rotor inlet (cooled)"
+          value={fmt(engine.hptRotorInletTemp, 0)}
+          unit="K"
+        />
         <Readout label="Oil pressure" value={fmt(instruments.oilPressurePsi, 0)} unit="psi" />
 
         {/* --- Exhaust velocities ---------------------------------------- */}
@@ -133,6 +144,42 @@ export function ReadoutPanel() {
 
         {/* --- Surge margin (warns when low) ----------------------------- */}
         <Readout label="Surge margin" value={fmt(surgeMargin, 0)} unit="%" warn={surgeLow} />
+      </div>
+
+      {/* --- The math, live ---------------------------------------------
+          The textbook equations with THIS moment's numbers substituted in —
+          the bridge between the readouts above and the homework page. */}
+      <div className="panel-section">
+        <button className={`btn${showMath ? ' is-active' : ''}`} onClick={() => setShowMath((v) => !v)}>
+          The math, live {showMath ? '▾' : '▸'}
+        </button>
+        {showMath && (
+          <div className="rp-math">
+            <code>
+              F = ṁ_c(v_c−v₀) + ṁ_b(v_b−v₀)
+              {'\n'}  = {fmt(engine.coreMassFlow, 0)}·({fmt(engine.coreExhaustVelocity, 0)}−
+              {fmt(engine.flightVelocity, 0)}) + {fmt(engine.bypassMassFlow, 0)}·(
+              {fmt(engine.bypassExhaustVelocity, 0)}−{fmt(engine.flightVelocity, 0)})
+              {'\n'}  ≈ {fmt(newtonsToKn(engine.netThrust), 0)} kN
+            </code>
+            <code>
+              BPR = ṁ_b / ṁ_c = {fmt(engine.bypassMassFlow, 0)} / {fmt(engine.coreMassFlow, 0)} ={' '}
+              {fmt(engine.bypassRatio, 2)}
+            </code>
+            <code>
+              OPR = P_t3 / P_t2 = {fmt(paToKpa(engine.compressorExitPressure), 0)} /{' '}
+              {fmt(paToKpa(engine.stations['2'].pressure), 0)} = {fmt(engine.overallPressureRatio, 1)}
+            </code>
+            <code>
+              TSFC = ṁ_f / F = {fmt(instruments.fuelFlowKgs * 1000, 1)} g/s /{' '}
+              {fmt(newtonsToKn(engine.netThrust), 0)} kN = {fmt(engine.tsfc * 1e6, 1)} g/(kN·s)
+            </code>
+            <div className="rp-math-note">
+              Thrust terms are shown pre-calibration-scale; the sim applies one global thrust
+              calibration constant so the settled SLS/100% point hits the certified 513.9 kN.
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

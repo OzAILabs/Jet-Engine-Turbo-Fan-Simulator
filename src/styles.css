@@ -1728,3 +1728,12 @@ input.slider::-moz-range-thumb {
 .ch-fail { color: #ff7a7a; font-weight: 700; }
 .ch-hints { margin: 8px 0 0; padding-left: 18px; font-size: 11.5px; color: #9daebe; }
 .ch-hints li { margin-bottom: 3px; }
+
+/* --- Live math section ----------------------------------------------------*/
+.rp-math { margin-top: 6px; }
+.rp-math code {
+  display: block; white-space: pre-wrap; font-size: 11px; line-height: 1.5;
+  color: #8fd0a8; background: #10151c; border-radius: 4px;
+  padding: 5px 8px; margin-bottom: 5px;
+}
+.rp-math-note { font-size: 10px; color: #77889b; line-height: 1.4; }
