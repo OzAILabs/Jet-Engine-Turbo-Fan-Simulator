@@ -215,6 +215,7 @@ export function CombustorFlame(props: { length: number }) {
 
   // Ignition event state (refs — no React re-render involvement).
   const prevLit = useRef(false);
+  const prevSurge = useRef(false);
   const ignite = useRef(0);
   const burst = useRef(0);
   const litSmooth = useRef(0);
@@ -222,7 +223,7 @@ export function CombustorFlame(props: { length: number }) {
 
   useFrame((state, delta) => {
     const dt = Math.min(delta, 0.1);
-    const { engine, instruments, startSeq, config } = useSimStore.getState();
+    const { engine, instruments, startSeq, config, surgeActive } = useSimStore.getState();
     const u = material.uniforms;
 
     const lit = startSeq.lit;
@@ -232,6 +233,10 @@ export function CombustorFlame(props: { length: number }) {
       burst.current = 1;
     }
     prevLit.current = lit;
+
+    // SURGE: reversed airflow belches flame — full burst on the event edge.
+    if (surgeActive && !prevSurge.current) burst.current = 1;
+    prevSurge.current = surgeActive;
 
     if (lit) ignite.current = Math.min(1, ignite.current + dt / IGNITE_SWEEP_S);
     else ignite.current = Math.max(0, ignite.current - dt * 4);

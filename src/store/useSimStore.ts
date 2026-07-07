@@ -166,6 +166,14 @@ export interface SimStore {
   apuBleedPsi: number;
   /** Training scenario: igniters spark but nothing lights (forces an autostart abort/retry). */
   igniterFailure: boolean;
+  /** Training scenario: VBV doors failed CLOSED — the booster can't dump air
+   *  at low N2, so surge margin collapses where the doors should be open.
+   *  Accelerate hard from idle and the compressor WILL surge. */
+  vbvFailClosed: boolean;
+  /** Live surge event (bang, thrust oscillation, EGT spike, EICAS latch). */
+  surgeActive: boolean;
+  /** Seconds since surge onset (drives the decaying oscillation). */
+  surgeT: number;
   instruments: Instruments;
   /** FADEC variable-geometry positions (VSV/VBV) — single source of truth for
    *  the 3D hardware, the audio, and any gauges. Computed each tick from N2. */
@@ -221,6 +229,7 @@ export interface SimStore {
   runAutostart: () => void;
   setApuRunning: (on: boolean) => void;
   setIgniterFailure: (on: boolean) => void;
+  setVbvFailClosed: (on: boolean) => void;
 
   tick: (dt: number) => void;
 
@@ -303,6 +312,9 @@ export const useSimStore = create<SimStore>((set, get) => ({
   apuRunning: false,
   apuBleedPsi: 0,
   igniterFailure: false,
+  vbvFailClosed: false,
+  surgeActive: false,
+  surgeT: 0,
   instruments: buildInstruments(config, initialSpool, initialEngine, initialSeq),
   actuation: computeActuation(initialSpool.n2),
 
@@ -357,6 +369,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
   },
   setApuRunning: (on) => set({ apuRunning: on }),
   setIgniterFailure: (on) => set({ igniterFailure: on }),
+  setVbvFailClosed: (on) => set({ vbvFailClosed: on, surgeActive: false, surgeT: 0 }),
 
   tick: (dt) => {
     const state = get();
@@ -398,25 +411,76 @@ export const useSimStore = create<SimStore>((set, get) => ({
             );
       const nextEngine = computeEngineState(state.inputs, cfg, nextSpool);
       const penalty = transientSurgePenalty(nextEngine.targetN2, nextSpool.n2);
-      const surgeMargin = clamp(nextEngine.surgeMarginSteady - penalty, 0, 100);
+
+      // --- Surge margin + surge event state machine -----------------------
+      // Base margin = steady schedule − accel transient bite − the training
+      // scenario where the VBV doors are failed CLOSED exactly where the
+      // schedule wants them open (the classic way real compressors surge).
+      const scheduled = computeActuation(nextSpool.n2, nextEngine.targetN2);
+      const vbvStuckPenalty = state.vbvFailClosed ? scheduled.vbvOpenFrac * 25 : 0;
+      let surgeMargin = clamp(nextEngine.surgeMarginSteady - penalty - vbvStuckPenalty, -25, 100);
+
+      let surgeActive = state.surgeActive;
+      let surgeT = state.surgeT + dtClamped;
+      if (!surgeActive && surgeMargin <= 0) {
+        surgeActive = true; // the line is crossed — BANG
+        surgeT = 0;
+      }
+      // FADEC recovery: snap the VBVs open to dump booster air — restores
+      // margin immediately (unless the doors are the failure). Recovery
+      // clears after the margin has been healthy for a couple of seconds.
+      if (surgeActive && !state.vbvFailClosed) surgeMargin = clamp(surgeMargin + 12, -25, 100);
+      if (surgeActive && surgeMargin > 5 && surgeT > 2) surgeActive = false;
+
+      // While surging: decaying ~1.6 Hz thrust pops + an EGT spike (reversed
+      // flow re-ingests hot gas), plus the latched EICAS warning.
+      let engineOut = nextEngine;
+      if (surgeActive) {
+        const pulse = Math.max(0, Math.sin(2 * Math.PI * 1.6 * surgeT));
+        const damp = Math.exp(-surgeT / 2.5);
+        const thrustFactor = 1 - 0.4 * damp * pulse;
+        engineOut = {
+          ...nextEngine,
+          netThrust: nextEngine.netThrust * thrustFactor,
+          coreThrust: nextEngine.coreThrust * thrustFactor,
+          egtC: nextEngine.egtC + 70 * damp,
+          warnings: [
+            {
+              id: 'eng-surge',
+              severity: 'critical',
+              message: 'ENG SURGE — compressor stall, airflow reversal in the core',
+            },
+            ...nextEngine.warnings,
+          ],
+        };
+      }
+
+      // VBV command: failed-closed pins the doors; an active surge (with
+      // healthy doors) snaps them fully open — the visible recovery action.
+      const actuation: ActuationState = state.vbvFailClosed
+        ? { ...scheduled, vbvOpenFrac: 0 }
+        : surgeActive
+          ? { ...scheduled, vbvOpenFrac: 1 }
+          : scheduled;
+
       // Keep the sequence's thermal state synced so a future shutdown starts
       // from the real EGT (no gauge jump at the CUTOFF moment).
       const syncedSeq: StartSequenceState =
-        seq.egtC === nextEngine.egtC && seq.fuelFlow === nextEngine.fuelFlow
+        seq.egtC === engineOut.egtC && seq.fuelFlow === engineOut.fuelFlow
           ? seq
-          : { ...seq, egtC: nextEngine.egtC, fuelFlow: nextEngine.fuelFlow, oilPressurePsi: 10 + 120 * Math.pow(nextSpool.n2, 1.3) };
+          : { ...seq, egtC: engineOut.egtC, fuelFlow: engineOut.fuelFlow, oilPressurePsi: 10 + 120 * Math.pow(nextSpool.n2, 1.3) };
       set({
         spool: nextSpool,
-        engine: nextEngine,
+        engine: engineOut,
         surgeMargin,
+        surgeActive,
+        surgeT,
         transientActive: penalty > 4,
         apuBleedPsi,
         startSeq: syncedSeq,
         autoStartActive: false, // reached idle/running — macro is done
-        instruments: buildInstruments(cfg, nextSpool, nextEngine, syncedSeq),
-        // Pass the commanded N2 so a throttle chop transiently re-opens the
-        // VBVs (booster-stall protection) while the core is still spinning down.
-        actuation: computeActuation(nextSpool.n2, nextEngine.targetN2),
+        instruments: buildInstruments(cfg, nextSpool, engineOut, syncedSeq),
+        actuation,
       });
       return;
     }
@@ -474,6 +538,9 @@ export const useSimStore = create<SimStore>((set, get) => ({
       spool: nextSpool,
       engine: nextEngine,
       surgeMargin: nextEngine.surgeMarginSteady,
+      // Sub-idle surge is start-sequence territory — clear any latched event.
+      surgeActive: false,
+      surgeT: 0,
       transientActive: false,
       apuBleedPsi,
       startSeq: nextSeq,

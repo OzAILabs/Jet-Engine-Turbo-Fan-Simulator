@@ -71,6 +71,8 @@ export function StartPanel() {
   const runAutostart = useSimStore((s) => s.runAutostart);
   const setApuRunning = useSimStore((s) => s.setApuRunning);
   const setIgniterFailure = useSimStore((s) => s.setIgniterFailure);
+  const vbvFailClosed = useSimStore((s) => s.vbvFailClosed);
+  const setVbvFailClosed = useSimStore((s) => s.setVbvFailClosed);
   const resetToColdDark = useSimStore((s) => s.resetToColdDark);
 
   const running = startSeq.runState === 'running';
@@ -161,6 +163,13 @@ export function StartPanel() {
           <label className="checkbox sp-failure">
             <input type="checkbox" checked={igniterFailure} onChange={() => setIgniterFailure(!igniterFailure)} />
             Scenario: igniter failure
+          </label>
+          <label
+            className="checkbox sp-failure"
+            title="VBV doors stuck closed: the booster can't dump air at low N2. Accelerate hard from idle and the compressor WILL surge."
+          >
+            <input type="checkbox" checked={vbvFailClosed} onChange={() => setVbvFailClosed(!vbvFailClosed)} />
+            Scenario: VBV fail closed
           </label>
         </div>
 

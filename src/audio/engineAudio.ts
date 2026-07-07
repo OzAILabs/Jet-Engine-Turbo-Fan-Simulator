@@ -37,6 +37,8 @@ export interface EngineAudioFrame {
   /** FADEC VBV position (1 = doors open, 0 = closed) — from store.actuation,
    *  so the drone dies exactly when the visible doors close. */
   vbvOpenFrac: number;
+  /** Live compressor-surge event — fires the bang on its rising edge. */
+  surgeActive: boolean;
 }
 
 interface ToneLayer {
@@ -161,6 +163,44 @@ function createWhoomphBuffer(context: AudioContext): AudioBuffer {
   return buffer;
 }
 
+/**
+ * Compressor-surge BANG: near-instant attack, ~0.25 s decay, wider band than
+ * the whoomph (a surge is a sharp report, not a swell), with a smaller echo
+ * pop ~0.18 s later — the double-hit character of a real surge recording.
+ */
+function createSurgeBangBuffer(context: AudioContext): AudioBuffer {
+  const sampleRate = context.sampleRate;
+  const length = Math.ceil(sampleRate * 0.9);
+  const buffer = context.createBuffer(1, length, sampleRate);
+  const data = buffer.getChannelData(0);
+
+  const lpCoeff = Math.exp((-2 * Math.PI * 420) / sampleRate);
+  const hpCoeff = Math.exp((-2 * Math.PI * 35) / sampleRate);
+  let lp1 = 0;
+  let lp2 = 0;
+  let low = 0;
+  let peak = 0;
+  const hit = (t: number, at: number, decay: number) =>
+    t < at ? 0 : Math.exp(-(t - at) / decay);
+  for (let i = 0; i < length; i++) {
+    const t = i / sampleRate;
+    const white = Math.random() * 2 - 1;
+    lp1 = lp1 * lpCoeff + white * (1 - lpCoeff);
+    lp2 = lp2 * lpCoeff + lp1 * (1 - lpCoeff);
+    low = low * hpCoeff + lp2 * (1 - hpCoeff);
+    const banded = lp2 - low;
+    const envelope = hit(t, 0.002, 0.11) + 0.45 * hit(t, 0.18, 0.09);
+    const sample = banded * envelope;
+    data[i] = sample;
+    peak = Math.max(peak, Math.abs(sample));
+  }
+  if (peak > 0) {
+    const norm = 1 / peak;
+    for (let i = 0; i < length; i++) data[i] *= norm;
+  }
+  return buffer;
+}
+
 function createSoftClipCurve(size = 1024): Float32Array<ArrayBuffer> {
   const curve = new Float32Array(size);
   for (let i = 0; i < size; i++) {
@@ -200,6 +240,9 @@ class ProceduralEngineAudio {
   private igniterBuffer: AudioBuffer | null = null;
   private whoomphInput: BiquadFilterNode | null = null;
   private whoomphBuffer: AudioBuffer | null = null;
+  private surgeBangInput: BiquadFilterNode | null = null;
+  private surgeBangBuffer: AudioBuffer | null = null;
+  private prevSurge = false;
 
   // Per-frame memory for edge detection and look-ahead scheduling.
   private prevLit = false;
@@ -360,6 +403,12 @@ class ProceduralEngineAudio {
       this.fireOneShot(this.whoomphBuffer, this.whoomphInput, now);
     }
     this.prevLit = frame.lit;
+
+    // --- Compressor surge BANG (rising edge of the store's surge event) -----
+    if (frame.surgeActive && !this.prevSurge) {
+      this.fireOneShot(this.surgeBangBuffer, this.surgeBangInput, now);
+    }
+    this.prevSurge = frame.surgeActive;
   }
 
   /** Play a pre-rendered one-shot through its dedicated (never-automated) bus. */
@@ -445,6 +494,18 @@ class ProceduralEngineAudio {
     whoomphGain.gain.value = 0.22;
     whoomphFilter.connect(whoomphGain).connect(master);
     this.whoomphInput = whoomphFilter;
+
+    // Surge bang: its own never-automated one-shot bus, louder + wider band
+    // than the light-off whoomph (a surge is a REPORT, not a swell).
+    this.surgeBangBuffer = createSurgeBangBuffer(context);
+    const surgeFilter = context.createBiquadFilter();
+    surgeFilter.type = 'lowpass';
+    surgeFilter.frequency.value = 520;
+    surgeFilter.Q.value = 0.7;
+    const surgeGain = context.createGain();
+    surgeGain.gain.value = 0.5;
+    surgeFilter.connect(surgeGain).connect(master);
+    this.surgeBangInput = surgeFilter;
 
     this.applyMaster();
   }
