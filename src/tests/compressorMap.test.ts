@@ -29,17 +29,19 @@ describe('core compressor map', () => {
     expect(opTo.pr).toBeCloseTo(sTo.overallPressureRatio, 1);
   });
 
-  it('map surge margin equals the displayed schedule ON the operating line', () => {
+  it('map surge margin EQUALS the displayed schedule ON the operating line', () => {
+    // The surge line is the constant-Wc locus above the op line, so map
+    // distance and displayed margin are the same number (±1 interpolation).
     for (const n2 of [cfg.idleN2, 0.75, 0.85, 0.95, cfg.takeoffN2]) {
       const op = steadyOperatingPoint(n2, cfg);
-      // Constant-Wc distance from op point to the surge line. The surge line's
-      // flow sits −5% of ITS OWN op point, so at constant Wc the interpolated
-      // surge PR belongs to a slightly faster speed line — margin reads within
-      // a few points of the schedule, never below it (conservative display).
       const sm = surgeMarginAt(map, op.wc, op.pr);
-      expect(sm).toBeGreaterThan(op.marginPct - 1);
-      expect(sm).toBeLessThan(op.marginPct + 12);
+      expect(Math.abs(sm - op.marginPct)).toBeLessThan(1);
     }
+  });
+
+  it('the top speed line reaches the takeoff operating point', () => {
+    const top = map.speedLines[map.speedLines.length - 1];
+    expect(top.n2c).toBeGreaterThanOrEqual(cfg.takeoffN2);
   });
 
   it('every speed line passes exactly through its steady operating point', () => {

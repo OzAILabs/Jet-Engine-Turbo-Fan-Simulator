@@ -53,8 +53,15 @@ export interface CoreCompressorMap {
   surgeLine: MapPoint[];
 }
 
-/** Flow excursion available along a speed line, relative to its op point. */
-const SURGE_FLOW_DROP = 0.05; // −5% Wc from op point to the surge top
+/**
+ * Flow excursion along a speed line, relative to its op point. The surge side
+ * is (near-)VERTICAL — real speed lines steepen to vertical approaching surge
+ * — and the drop is exactly 0 so the surge line is the constant-Wc locus
+ * above each operating point. That makes the drawn geometry IDENTICAL to the
+ * displayed margin definition (SM at constant corrected flow): when the live
+ * margin reads 0, the dot sits exactly ON the drawn surge line.
+ */
+const SURGE_FLOW_DROP = 0;
 const CHOKE_FLOW_RISE = 0.07; // +7% Wc from op point to choke
 
 /** Steady operating point in the map plane for a given N2. */
@@ -103,9 +110,14 @@ export function buildCoreCompressorMap(
   const cached = mapCache.get(config);
   if (cached) return cached;
 
-  // Speed lines from just below idle to just past takeoff N2.
+  // Speed lines from just below idle to just past takeoff N2 — endpoint-
+  // anchored so the TOP line always lands at takeoff+0.02 (an accumulating
+  // stride left the takeoff operating dot floating past the whole family).
+  const N_LINES = 8;
   const n2s: number[] = [];
-  for (let n2 = 0.55; n2 <= config.takeoffN2 + 0.021; n2 += 0.08) n2s.push(n2);
+  for (let i = 0; i < N_LINES; i++) {
+    n2s.push(0.55 + (i / (N_LINES - 1)) * (config.takeoffN2 + 0.02 - 0.55));
+  }
 
   const speedLines = n2s.map((n2) => buildSpeedLine(n2, config));
 

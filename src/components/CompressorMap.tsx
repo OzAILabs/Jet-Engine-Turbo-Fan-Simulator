@@ -21,6 +21,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSimStore } from '../store/useSimStore';
 import { buildCoreCompressorMap } from '../sim/compressorMap';
 import { coreFlowFraction } from '../sim/engineModel';
+import { transientSurgePenalty } from '../sim/spoolDynamics';
 import { clamp } from '../sim/units';
 
 /** Axis domain: corrected flow (fraction of design) × pressure ratio. */
@@ -65,13 +66,16 @@ export function CompressorMap() {
       const state = useSimStore.getState();
       if (state.paused) return; // freeze dot + trail with the sim
       const { spool, engine, surgeMargin } = state;
-      // Transient margin penalty displayed as a PR lift toward the surge line
-      // (accel over-fueling raises the working line — that IS the mechanism).
-      const penalty = Math.max(0, engine.surgeMarginSteady - surgeMargin);
+      // ONLY the accel over-fuel penalty is drawn as a PR lift toward the
+      // surge line (that IS its mechanism: extra fuel raises the working
+      // line). The VBV-stuck margin loss is a BOOSTER problem — it shows in
+      // the SM number and dot color, not as an HPC working-line rise, and a
+      // fuel chop must never lift the dot.
+      const accelPenalty = transientSurgePenalty(engine.targetN2, spool.n2);
       const trail = trailRef.current;
       trail.push({
         wc: coreFlowFraction(spool.n2, state.config),
-        pr: engine.overallPressureRatio * (1 + penalty / 100),
+        pr: engine.overallPressureRatio * (1 + accelPenalty / 100),
         surgeMargin,
         n2: spool.n2,
       });
