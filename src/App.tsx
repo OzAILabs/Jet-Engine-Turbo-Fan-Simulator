@@ -3,6 +3,7 @@
  * / chart / warning / camera panels float over it like a science-center kiosk.
  */
 import { EngineScene } from './components/EngineScene';
+import { AssemblyTreePanel } from './components/AssemblyTreePanel';
 import { ControlPanel } from './components/ControlPanel';
 import { ReadoutPanel } from './components/ReadoutPanel';
 import { ChartsPanel } from './components/ChartsPanel';
@@ -40,6 +41,7 @@ export default function App() {
         <div className="ui-col ui-left">
           <ControlPanel />
           <CameraControlsPanel />
+          <AssemblyTreePanel />
         </div>
 
         <div className="ui-col ui-right">
