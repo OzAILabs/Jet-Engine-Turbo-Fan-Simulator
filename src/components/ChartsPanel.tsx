@@ -15,6 +15,7 @@ import { temperatureColor } from '../util/colorScale';
 import { paToKpa, newtonsToKn } from '../sim/units';
 import { StartTrends } from './StartTrends';
 import { CompressorMap } from './CompressorMap';
+import { TsDiagram } from './TsDiagram';
 
 /** StationId values we read from engine.stations. */
 type StationKey = '2' | '25' | '3' | '4' | '45' | '5' | '8';
@@ -113,6 +114,11 @@ export function ChartsPanel() {
       {/* Compressor map: surge line vs the live operating point */}
       <ChartSection title="Compressor map">
         <CompressorMap />
+      </ChartSection>
+
+      {/* T-s diagram: the live Brayton cycle from the station entropy data */}
+      <ChartSection title="T–s diagram — the live cycle">
+        <TsDiagram />
       </ChartSection>
 
       {/* Pressure by station */}
