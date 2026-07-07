@@ -52,6 +52,9 @@ export function EngineModel3D() {
   // Drive-train X-ray: hide the gas-path machinery so the shafts, bearings
   // and accessory drive get the stage to themselves.
   const internals = useSimStore((s) => s.viewMode === 'internals');
+  // Per-system layer gates — AND-ed with the mode logic. Object identity only
+  // changes on a user toggle, so this re-render is rare and user-driven.
+  const layers = useSimStore((s) => s.layers);
 
   const off = (center: number): [number, number, number] => [exploded ? explodeShiftX(center) : 0, 0, 0];
 
@@ -73,7 +76,7 @@ export function EngineModel3D() {
       <group ref={root}>
       {/* Two-spool shafts run the length of the engine; hide them when the
           modules are pulled apart so they don't dangle in the gaps. */}
-      {!exploded && <Shafts />}
+      {!exploded && layers.rotors && <Shafts />}
 
       {/* Rotating machinery & static internals (spread apart when exploded).
           Fan/Compressor/Turbine stay mounted in the Internals view — they hide
@@ -92,21 +95,25 @@ export function EngineModel3D() {
           the Internals drive-train view drops them entirely. */}
       {!internals && (
         <>
-          <group position={off(MODULE_CENTERS.combustor)}>
-            <Combustor />
-          </group>
-          <group position={off(MODULE_CENTERS.nozzles)}>
-            <Nozzles />
-          </group>
+          {layers.combustor && (
+            <group position={off(MODULE_CENTERS.combustor)}>
+              <Combustor />
+            </group>
+          )}
+          {layers.nozzles && (
+            <group position={off(MODULE_CENTERS.nozzles)}>
+              <Nozzles />
+            </group>
+          )}
         </>
       )}
 
       {/* Casings / shells (transparency & cutaway handled inside; they hide
           themselves in exploded mode so there is no floating "ghost" shell). */}
-      <CutawayShell />
+      {layers.nacelle && <CutawayShell />}
       {/* Fan-frame structural struts spanning the bypass duct, aft of the OGVs. */}
-      <BypassStruts />
-      <Nacelle />
+      {layers.structure && <BypassStruts />}
+      {layers.nacelle && <Nacelle />}
 
       {/* Flow visualization follows the assembled engine, so hide it when
           exploded (the modules no longer line up with the flow paths) and in
@@ -135,13 +142,17 @@ export function EngineModel3D() {
             Internals, but mounted here — outside the blanket shadow traverse —
             so their castShadow=false sticks; they handle all four view modes
             themselves (null in 'full' and 'exploded'). */}
-        <Bearings />
-        <AccessoryGearbox />
-        <AgbGearTrain />
-        <FuelIgnitionSystem />
-        <CompressorBleedSystems />
-        <CaseDetail />
-        <HarnessAndSensors />
+        {layers.bearings && <Bearings />}
+        {layers.accessoryDrive && (
+          <>
+            <AccessoryGearbox />
+            <AgbGearTrain />
+          </>
+        )}
+        {layers.fuelSystem && <FuelIgnitionSystem />}
+        {layers.airBleed && <CompressorBleedSystems />}
+        {layers.caseDetail && <CaseDetail />}
+        {layers.electrical && <HarnessAndSensors />}
       </group>
     </>
   );

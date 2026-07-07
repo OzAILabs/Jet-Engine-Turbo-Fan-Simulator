@@ -34,6 +34,49 @@ import { clamp } from '../sim/units';
 
 // --- View enums -----------------------------------------------------------
 export type ViewMode = 'full' | 'transparent' | 'cutaway' | 'exploded' | 'internals';
+
+/**
+ * Independently toggleable 3D system layers. Each is AND-gated with the
+ * view-mode logic at its render site: a layer turned OFF hides that system in
+ * every mode, and all-ON reproduces the classic modes exactly. Selecting a
+ * view mode resets every layer ON (the modes act as presets a user then
+ * subtracts from — "show me just the fuel system" style).
+ */
+export const LAYER_IDS = [
+  'nacelle',
+  'structure',
+  'rotors',
+  'stators',
+  'combustor',
+  'nozzles',
+  'bearings',
+  'accessoryDrive',
+  'fuelSystem',
+  'airBleed',
+  'electrical',
+  'caseDetail',
+] as const;
+export type LayerId = (typeof LAYER_IDS)[number];
+export type LayersState = Record<LayerId, boolean>;
+
+/** Human labels for the layers panel (kept beside the ids so they never drift). */
+export const LAYER_LABELS: Record<LayerId, string> = {
+  nacelle: 'Nacelle & casings',
+  structure: 'Structural struts',
+  rotors: 'Rotating assemblies',
+  stators: 'Stators & vanes',
+  combustor: 'Combustor & flame',
+  nozzles: 'Exhaust nozzles',
+  bearings: 'Bearings',
+  accessoryDrive: 'Accessory drive',
+  fuelSystem: 'Fuel & ignition',
+  airBleed: 'Air & bleed (VSV/VBV)',
+  electrical: 'Electrical & FADEC',
+  caseDetail: 'Case detail (flanges, bolts)',
+};
+
+const allLayersOn = (): LayersState =>
+  Object.fromEntries(LAYER_IDS.map((id) => [id, true])) as LayersState;
 export type CameraMode = 'orthographic' | 'perspective';
 /** Exhaust rendering style: realistic translucent gas vs. dramatic bright plume. */
 export type ExhaustStyle = 'volumetric' | 'shader';
@@ -121,6 +164,8 @@ export interface SimStore {
 
   // View / UI toggles
   viewMode: ViewMode;
+  /** Per-system 3D visibility, AND-gated with the view-mode logic. */
+  layers: LayersState;
   exhaustStyle: ExhaustStyle;
   cameraMode: CameraMode;
   cameraCommand: CameraCommand;
@@ -163,6 +208,8 @@ export interface SimStore {
   tick: (dt: number) => void;
 
   setViewMode: (m: ViewMode) => void;
+  toggleLayer: (id: LayerId) => void;
+  setAllLayers: (on: boolean) => void;
   setExhaustStyle: (s: ExhaustStyle) => void;
   setCameraMode: (m: CameraMode) => void;
   setCameraPreset: (p: CameraPreset) => void;
@@ -241,6 +288,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
   actuation: computeActuation(initialSpool.n2),
 
   viewMode: 'cutaway',
+  layers: allLayersOn(),
   exhaustStyle: 'shader', // 'Dramatic' bright plume by default
   cameraMode: 'orthographic',
   cameraCommand: { kind: 'reset', preset: 'iso', focusPoint: null, nonce: 0 },
@@ -404,7 +452,14 @@ export const useSimStore = create<SimStore>((set, get) => ({
     });
   },
 
-  setViewMode: (m) => set({ viewMode: m }),
+  // Selecting a mode resets the layers — the modes are presets users subtract from.
+  setViewMode: (m) => set({ viewMode: m, layers: allLayersOn() }),
+  toggleLayer: (id) =>
+    set((s) => ({ layers: { ...s.layers, [id]: !s.layers[id] } })),
+  setAllLayers: (on) =>
+    set(() => ({
+      layers: Object.fromEntries(LAYER_IDS.map((id) => [id, on])) as LayersState,
+    })),
   setExhaustStyle: (s) => set({ exhaustStyle: s }),
   setCameraMode: (m) => set({ cameraMode: m }),
   setCameraPreset: (p) =>

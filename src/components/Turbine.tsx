@@ -74,6 +74,9 @@ export function Turbine() {
   const { hptStages, lptStages } = useSimStore.getState().config;
   // Internals drive-train view: blade rows hide, drums/disks/cones stay.
   const internals = useSimStore((s) => s.viewMode === 'internals');
+  // System layers: drums/disks/rotor rows are 'rotors', NGV rows 'stators'.
+  const showRotors = useSimStore((s) => s.layers.rotors);
+  const showStators = useSimStore((s) => s.layers.stators);
 
   // --- Core drum (rotating disk stack) --------------------------------------
   // One gently flaring profile (0.40 at hptStart → 0.50 at lptEnd, matching the
@@ -213,40 +216,49 @@ export function Turbine() {
 
     // HPT drum rides the HP spool; LPT drum rides the LP spool. Plus a tiny
     // start/shutdown rumble on both (zero at rest and at/above idle).
-    hptDrumGroup.current.rotation.x = SPOOL_SPIN_SIGN * spool.hpAngle;
-    lptDrumGroup.current.rotation.x = SPOOL_SPIN_SIGN * spool.lpAngle;
+    // Null-guarded: the drum groups unmount when the rotors layer is off.
     const jitter = subIdleJitter(clock.elapsedTime, spool.n2);
-    hptDrumGroup.current.position.y = jitter;
-    lptDrumGroup.current.position.y = jitter;
+    if (hptDrumGroup.current) {
+      hptDrumGroup.current.rotation.x = SPOOL_SPIN_SIGN * spool.hpAngle;
+      hptDrumGroup.current.position.y = jitter;
+    }
+    if (lptDrumGroup.current) {
+      lptDrumGroup.current.rotation.x = SPOOL_SPIN_SIGN * spool.lpAngle;
+      lptDrumGroup.current.position.y = jitter;
+    }
   });
 
   return (
     <group>
       {/* HPT drum + machined disks + forward drive cone — HP spool. */}
-      <group ref={hptDrumGroup}>
-        <mesh geometry={hptDrumGeometry} material={drumMaterial} position={[hptDrumCenterX, 0, 0]} />
-        <RotorDisks
-          xs={hptRims.xs}
-          rimRadii={hptRims.radii}
-          boreInner={ROTOR.boreInner.hp}
-          coneArms={hptCones}
-          material={drumMaterial}
-          thermalGrowth={0.015}
-        />
-      </group>
+      {showRotors && (
+        <group ref={hptDrumGroup}>
+          <mesh geometry={hptDrumGeometry} material={drumMaterial} position={[hptDrumCenterX, 0, 0]} />
+          <RotorDisks
+            xs={hptRims.xs}
+            rimRadii={hptRims.radii}
+            boreInner={ROTOR.boreInner.hp}
+            coneArms={hptCones}
+            material={drumMaterial}
+            thermalGrowth={0.015}
+          />
+        </group>
+      )}
 
       {/* LPT drum + machined disks + aft drive cone — LP spool (drives the fan shaft). */}
-      <group ref={lptDrumGroup}>
-        <mesh geometry={lptDrumGeometry} material={drumMaterial} position={[lptDrumCenterX, 0, 0]} />
-        <RotorDisks
-          xs={lptRims.xs}
-          rimRadii={lptRims.radii}
-          boreInner={ROTOR.boreInner.lp}
-          coneArms={lptCones}
-          material={drumMaterial}
-          thermalGrowth={0.01}
-        />
-      </group>
+      {showRotors && (
+        <group ref={lptDrumGroup}>
+          <mesh geometry={lptDrumGeometry} material={drumMaterial} position={[lptDrumCenterX, 0, 0]} />
+          <RotorDisks
+            xs={lptRims.xs}
+            rimRadii={lptRims.radii}
+            boreInner={ROTOR.boreInner.lp}
+            coneArms={lptCones}
+            material={drumMaterial}
+            thermalGrowth={0.01}
+          />
+        </group>
+      )}
 
       {/* HP turbine: per stage, an NGV stator immediately ahead of the rotor.
           Hidden in the Internals drive-train view (drums/disks/cones stay). */}
@@ -256,21 +268,25 @@ export function Turbine() {
         const statorX = stage.x - slot * 0.3; // NGV sits just upstream of rotor
         return (
           <group key={`hpt-${i}`}>
-            <BladeRow
-              geometry={stage.geometry}
-              material={hptMaterial}
-              count={HPT_STATOR_COUNT}
-              x={statorX}
-              spin={null}
-              phase={Math.PI / HPT_STATOR_COUNT}
-            />
-            <BladeRow
-              geometry={stage.geometry}
-              material={hptMaterial}
-              count={HPT_ROTOR_COUNT}
-              x={stage.x}
-              spin="hp"
-            />
+            {showStators && (
+              <BladeRow
+                geometry={stage.geometry}
+                material={hptMaterial}
+                count={HPT_STATOR_COUNT}
+                x={statorX}
+                spin={null}
+                phase={Math.PI / HPT_STATOR_COUNT}
+              />
+            )}
+            {showRotors && (
+              <BladeRow
+                geometry={stage.geometry}
+                material={hptMaterial}
+                count={HPT_ROTOR_COUNT}
+                x={stage.x}
+                spin="hp"
+              />
+            )}
           </group>
         );
       })}
@@ -282,21 +298,25 @@ export function Turbine() {
         const statorX = stage.x - slot * 0.3;
         return (
           <group key={`lpt-${i}`}>
-            <BladeRow
-              geometry={stage.geometry}
-              material={lptMaterial}
-              count={LPT_STATOR_COUNT}
-              x={statorX}
-              spin={null}
-              phase={Math.PI / LPT_STATOR_COUNT}
-            />
-            <BladeRow
-              geometry={stage.geometry}
-              material={lptMaterial}
-              count={LPT_ROTOR_COUNT}
-              x={stage.x}
-              spin="lp"
-            />
+            {showStators && (
+              <BladeRow
+                geometry={stage.geometry}
+                material={lptMaterial}
+                count={LPT_STATOR_COUNT}
+                x={statorX}
+                spin={null}
+                phase={Math.PI / LPT_STATOR_COUNT}
+              />
+            )}
+            {showRotors && (
+              <BladeRow
+                geometry={stage.geometry}
+                material={lptMaterial}
+                count={LPT_ROTOR_COUNT}
+                x={stage.x}
+                spin="lp"
+              />
+            )}
           </group>
         );
       })}

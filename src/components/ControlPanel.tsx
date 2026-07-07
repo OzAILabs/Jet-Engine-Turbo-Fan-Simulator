@@ -11,7 +11,8 @@
  * flag, and the five overlay toggles). We do NOT subscribe to the live spool or
  * engine numbers here, so dragging a slider never forces the 3D scene to rebuild.
  */
-import { useSimStore } from '../store/useSimStore';
+import { useState } from 'react';
+import { LAYER_IDS, LAYER_LABELS, useSimStore } from '../store/useSimStore';
 import type { ViewMode, ExhaustStyle } from '../store/useSimStore';
 import { engineAudio } from '../audio/engineAudio';
 import { ThrottleQuadrant } from './ThrottleQuadrant';
@@ -55,6 +56,7 @@ export function ControlPanel() {
   // Reactive subscriptions: only the slices this panel renders from.
   const inputs = useSimStore((s) => s.inputs);
   const viewMode = useSimStore((s) => s.viewMode);
+  const layers = useSimStore((s) => s.layers);
   const exhaustStyle = useSimStore((s) => s.exhaustStyle);
   const paused = useSimStore((s) => s.paused);
   const soundEnabled = useSimStore((s) => s.soundEnabled);
@@ -72,7 +74,12 @@ export function ControlPanel() {
   const setMach = useSimStore((s) => s.setMach);
   const setIsaOffset = useSimStore((s) => s.setIsaOffset);
   const setViewMode = useSimStore((s) => s.setViewMode);
+  const toggleLayer = useSimStore((s) => s.toggleLayer);
+  const setAllLayers = useSimStore((s) => s.setAllLayers);
   const setExhaustStyle = useSimStore((s) => s.setExhaustStyle);
+
+  // Layers checklist visibility (local UI state; collapsed by default).
+  const [layersOpen, setLayersOpen] = useState(false);
   const toggle = useSimStore((s) => s.toggle);
   const togglePaused = useSimStore((s) => s.togglePaused);
   const resetToTakeoff = useSimStore((s) => s.resetToTakeoff);
@@ -184,6 +191,44 @@ export function ControlPanel() {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* --- System layers ------------------------------------------------
+          Per-system visibility, AND-gated with the view mode ("show me just
+          the fuel system"). Picking any view mode resets all layers ON, so
+          the segmented buttons above double as presets. Collapsed by default
+          to keep the panel lean. */}
+      <div className="panel-section">
+        <div className="panel-subtitle">
+          <button
+            className={`btn${layersOpen ? ' is-active' : ''}`}
+            onClick={() => setLayersOpen((v) => !v)}
+          >
+            Layers {layersOpen ? '▾' : '▸'}
+          </button>
+        </div>
+        {layersOpen && (
+          <>
+            {LAYER_IDS.map((id) => (
+              <label key={id} className="checkbox">
+                <input
+                  type="checkbox"
+                  checked={layers[id]}
+                  onChange={() => toggleLayer(id)}
+                />
+                {LAYER_LABELS[id]}
+              </label>
+            ))}
+            <div className="btn-row">
+              <button className="btn" onClick={() => setAllLayers(true)}>
+                All on
+              </button>
+              <button className="btn" onClick={() => setAllLayers(false)}>
+                All off
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
       {/* --- Exhaust style ----------------------------------------------- */}

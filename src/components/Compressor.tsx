@@ -101,6 +101,9 @@ function createSpacerSeals(rotorXs: number[]): THREE.BufferGeometry | null {
 export function Compressor() {
   // Internals drive-train view: blade rows hide, drums/disks/cones stay.
   const internals = useSimStore((s) => s.viewMode === 'internals');
+  // System layers: drums/disks/rotor rows are 'rotors', vane rows 'stators'.
+  const showRotors = useSimStore((s) => s.layers.rotors);
+  const showStators = useSimStore((s) => s.layers.stators);
 
   // --- Core drum under the blades ----------------------------------------
   // One frustum profile (r=0.50 at lpcStart down to r=0.34 at hpcEnd), but
@@ -260,42 +263,51 @@ export function Compressor() {
     rotorMat.emissiveIntensity = intensity;
 
     // Booster drum rides the LP spool; HPC drum rides the (faster) HP spool.
-    boosterDrumGroup.current.rotation.x = SPOOL_SPIN_SIGN * spool.lpAngle;
-    hpcDrumGroup.current.rotation.x = SPOOL_SPIN_SIGN * spool.hpAngle;
+    // Null-guarded: the drum groups unmount when the rotors layer is off.
     const jitter = subIdleJitter(clock.elapsedTime, spool.n2);
-    boosterDrumGroup.current.position.y = jitter;
-    hpcDrumGroup.current.position.y = jitter;
+    if (boosterDrumGroup.current) {
+      boosterDrumGroup.current.rotation.x = SPOOL_SPIN_SIGN * spool.lpAngle;
+      boosterDrumGroup.current.position.y = jitter;
+    }
+    if (hpcDrumGroup.current) {
+      hpcDrumGroup.current.rotation.x = SPOOL_SPIN_SIGN * spool.hpAngle;
+      hpcDrumGroup.current.position.y = jitter;
+    }
   });
 
   return (
     <group>
       {/* Booster drum + machined disks + forward drive cone — LP spool. */}
-      <group ref={boosterDrumGroup}>
-        <mesh geometry={boosterDrumGeo} material={drumMat} position={[boosterDrumCenterX, 0, 0]} />
-        {boosterSeals && <mesh geometry={boosterSeals} material={drumMat} castShadow={false} />}
-        <RotorDisks
-          xs={boosterRims.xs}
-          rimRadii={boosterRims.radii}
-          boreInner={ROTOR.boreInner.lp}
-          coneArms={boosterCones}
-          material={drumMat}
-          thermalGrowth={0.004}
-        />
-      </group>
+      {showRotors && (
+        <group ref={boosterDrumGroup}>
+          <mesh geometry={boosterDrumGeo} material={drumMat} position={[boosterDrumCenterX, 0, 0]} />
+          {boosterSeals && <mesh geometry={boosterSeals} material={drumMat} castShadow={false} />}
+          <RotorDisks
+            xs={boosterRims.xs}
+            rimRadii={boosterRims.radii}
+            boreInner={ROTOR.boreInner.lp}
+            coneArms={boosterCones}
+            material={drumMat}
+            thermalGrowth={0.004}
+          />
+        </group>
+      )}
 
       {/* HPC drum + machined disks + aft drive cone — HP spool. */}
-      <group ref={hpcDrumGroup}>
-        <mesh geometry={hpcDrumGeo} material={drumMat} position={[hpcDrumCenterX, 0, 0]} />
-        {hpcSeals && <mesh geometry={hpcSeals} material={drumMat} castShadow={false} />}
-        <RotorDisks
-          xs={hpcRims.xs}
-          rimRadii={hpcRims.radii}
-          boreInner={ROTOR.boreInner.hp}
-          coneArms={hpcCones}
-          material={drumMat}
-          thermalGrowth={0.008}
-        />
-      </group>
+      {showRotors && (
+        <group ref={hpcDrumGroup}>
+          <mesh geometry={hpcDrumGeo} material={drumMat} position={[hpcDrumCenterX, 0, 0]} />
+          {hpcSeals && <mesh geometry={hpcSeals} material={drumMat} castShadow={false} />}
+          <RotorDisks
+            xs={hpcRims.xs}
+            rimRadii={hpcRims.radii}
+            boreInner={ROTOR.boreInner.hp}
+            coneArms={hpcCones}
+            material={drumMat}
+            thermalGrowth={0.008}
+          />
+        </group>
+      )}
 
       {/* Booster (LPC): LP-driven rotor rows + interleaved stators. Hidden in
           the Internals drive-train view (drums/disks/cones above stay). */}
@@ -303,22 +315,26 @@ export function Compressor() {
         const x = boosterX(i);
         return (
           <group key={`booster-${i}`}>
-            <BladeRow
-              geometry={geo}
-              material={rotorMat}
-              count={BOOSTER_BLADE_COUNT}
-              x={x}
-              spin="lp"
-            />
+            {showRotors && (
+              <BladeRow
+                geometry={geo}
+                material={rotorMat}
+                count={BOOSTER_BLADE_COUNT}
+                x={x}
+                spin="lp"
+              />
+            )}
             {/* Stator sits just behind the rotor, staggered angularly. */}
-            <BladeRow
-              geometry={geo}
-              material={statorMat}
-              count={BOOSTER_BLADE_COUNT}
-              x={x + STATOR_OFFSET}
-              spin={null}
-              phase={Math.PI / BOOSTER_BLADE_COUNT}
-            />
+            {showStators && (
+              <BladeRow
+                geometry={geo}
+                material={statorMat}
+                count={BOOSTER_BLADE_COUNT}
+                x={x + STATOR_OFFSET}
+                spin={null}
+                phase={Math.PI / BOOSTER_BLADE_COUNT}
+              />
+            )}
           </group>
         );
       })}
@@ -328,21 +344,25 @@ export function Compressor() {
         const x = hpcX(i);
         return (
           <group key={`hpc-${i}`}>
-            <BladeRow
-              geometry={geo}
-              material={rotorMat}
-              count={HPC_BLADE_COUNT}
-              x={x}
-              spin="hp"
-            />
-            <BladeRow
-              geometry={geo}
-              material={statorMat}
-              count={HPC_BLADE_COUNT}
-              x={x + STATOR_OFFSET}
-              spin={null}
-              phase={Math.PI / HPC_BLADE_COUNT}
-            />
+            {showRotors && (
+              <BladeRow
+                geometry={geo}
+                material={rotorMat}
+                count={HPC_BLADE_COUNT}
+                x={x}
+                spin="hp"
+              />
+            )}
+            {showStators && (
+              <BladeRow
+                geometry={geo}
+                material={statorMat}
+                count={HPC_BLADE_COUNT}
+                x={x + STATOR_OFFSET}
+                spin={null}
+                phase={Math.PI / HPC_BLADE_COUNT}
+              />
+            )}
           </group>
         );
       })}

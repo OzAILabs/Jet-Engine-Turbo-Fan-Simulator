@@ -42,6 +42,9 @@ export function Fan() {
   const config = useSimStore((s) => s.config);
   // Internals drive-train view: blades/OGVs/blur hide, spool group stays.
   const internals = useSimStore((s) => s.viewMode === 'internals');
+  // System layers: the spinning assembly is 'rotors', the OGVs are 'stators'.
+  const showRotors = useSimStore((s) => s.layers.rotors);
+  const showStators = useSimStore((s) => s.layers.stators);
 
   // The spinner + hub spin with the LP spool; one group drives both.
   const spoolGroup = useRef<THREE.Group>(null!);
@@ -180,13 +183,16 @@ export function Fan() {
       mesh.setMatrixAt(k, dummy.matrix);
     }
     mesh.instanceMatrix.needsUpdate = true;
-  }, [config.numFanBlades]);
+    // showRotors: the mesh remounts fresh (identity matrices) when the rotors
+    // layer toggles back on, so the layout pass must run again.
+  }, [config.numFanBlades, showRotors]);
 
   // Drive the spinner + hub spin from the live LP spool angle (no re-render),
   // and fade the motion-blur disc in with fan speed.
   useFrame((state) => {
     const { spool } = useSimStore.getState();
-    spoolGroup.current.rotation.x = SPOOL_SPIN_SIGN * spool.lpAngle;
+    // Null-guarded: the spool group unmounts when the rotors layer is off.
+    if (spoolGroup.current) spoolGroup.current.rotation.x = SPOOL_SPIN_SIGN * spool.lpAngle;
     if (blurMatRef.current) {
       blurMatRef.current.opacity = THREE.MathUtils.clamp((spool.n1 - 0.25) * 0.7, 0, 0.5);
     }
@@ -198,61 +204,69 @@ export function Fan() {
   return (
     <group>
       {/* Spinner nose cone + fan hub: these turn with the LP spool. */}
-      <group ref={spoolGroup}>
-        {/* Ogive nose cone + white safety spiral (spins with the LP spool). */}
-        <Spinner />
-        {/* Hub drum centered on the fan plane. */}
-        <mesh geometry={hubGeo} material={hubMat} position={[AXIS.fanPlane, 0, 0]} />
-        {/* Fan disk + dovetail blade-root blocks — they ride this same LP
-            group, so they spin with N1 without any extra useFrame loop. */}
-        <mesh geometry={fanDiskGeo} material={hubMat} castShadow={false} />
-        <instancedMesh
-          ref={dovetailRef}
-          args={[dovetailGeo, hubMat, config.numFanBlades]}
-          castShadow={false}
-          frustumCulled={false}
-        />
-      </group>
+      {showRotors && (
+        <group ref={spoolGroup}>
+          {/* Ogive nose cone + white safety spiral (spins with the LP spool). */}
+          <Spinner />
+          {/* Hub drum centered on the fan plane. */}
+          <mesh geometry={hubGeo} material={hubMat} position={[AXIS.fanPlane, 0, 0]} />
+          {/* Fan disk + dovetail blade-root blocks — they ride this same LP
+              group, so they spin with N1 without any extra useFrame loop. */}
+          <mesh geometry={fanDiskGeo} material={hubMat} castShadow={false} />
+          <instancedMesh
+            ref={dovetailRef}
+            args={[dovetailGeo, hubMat, config.numFanBlades]}
+            castShadow={false}
+            frustumCulled={false}
+          />
+        </group>
+      )}
 
       {/* Blade rows + blur disc hide in the Internals drive-train view — the
           spinner, hub, fan disk and dovetails above keep spinning there. */}
       {!internals && (
         <>
-          {/* 22 composite fan blades — spin with the LP spool. */}
-          <BladeRow
-            geometry={fanBladeGeo}
-            material={bladeMat}
-            count={config.numFanBlades}
-            x={AXIS.fanPlane}
-            spin="lp"
-          />
+          {showRotors && (
+            <>
+              {/* 22 composite fan blades — spin with the LP spool. */}
+              <BladeRow
+                geometry={fanBladeGeo}
+                material={bladeMat}
+                count={config.numFanBlades}
+                x={AXIS.fanPlane}
+                spin="lp"
+              />
 
-          {/* Motion-blur disc: fades in at high RPM so the fan reads as a blur. */}
-          <mesh geometry={blurDiscGeo} position={[AXIS.fanPlane + 0.06, 0, 0]}>
-            <meshStandardMaterial
-              ref={blurMatRef}
-              color="#15181d"
-              metalness={0.3}
-              roughness={0.7}
-              transparent
-              opacity={0}
-              depthWrite={false}
-              side={THREE.DoubleSide}
-            />
-          </mesh>
+              {/* Motion-blur disc: fades in at high RPM so the fan reads as a blur. */}
+              <mesh geometry={blurDiscGeo} position={[AXIS.fanPlane + 0.06, 0, 0]}>
+                <meshStandardMaterial
+                  ref={blurMatRef}
+                  color="#15181d"
+                  metalness={0.3}
+                  roughness={0.7}
+                  transparent
+                  opacity={0}
+                  depthWrite={false}
+                  side={THREE.DoubleSide}
+                />
+              </mesh>
+            </>
+          )}
 
           {/* Stationary outlet guide vanes: the FIRST stator after the fan.
               Placed just aft of the fan's swept tip TE (~x=-2.50 at the duct
               radius) and FORWARD of the first booster rotor (the booster rows
               are packed aft to leave room — see Compressor.tsx). Sits in the
               bypass annulus, below the fan tips. */}
-          <BladeRow
-            geometry={ogvGeo}
-            material={ogvMat}
-            count={OGV_COUNT}
-            x={AXIS.fanPlane + 0.82}
-            spin={null}
-          />
+          {showStators && (
+            <BladeRow
+              geometry={ogvGeo}
+              material={ogvMat}
+              count={OGV_COUNT}
+              x={AXIS.fanPlane + 0.82}
+              spin={null}
+            />
+          )}
         </>
       )}
     </group>
