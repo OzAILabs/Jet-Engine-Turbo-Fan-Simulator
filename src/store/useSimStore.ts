@@ -191,6 +191,14 @@ export interface SimStore {
    * 'lag' = the classic first-order lags (legacy fallback).
    */
   spoolModel: 'torque' | 'lag';
+  /**
+   * Section cut: a single renderer-level clipping plane (applies to every
+   * material — no per-material wiring). Axis picks the cut orientation
+   * (x = transverse disc, y = horizontal, z = the classic vertical
+   * half-section), offset slides it along that axis, flip keeps the other
+   * side. Composes freely with view modes and layers.
+   */
+  sectionCut: { enabled: boolean; axis: 'x' | 'y' | 'z'; offset: number; flip: boolean };
   exhaustStyle: ExhaustStyle;
   cameraMode: CameraMode;
   cameraCommand: CameraCommand;
@@ -238,6 +246,7 @@ export interface SimStore {
   setAllLayers: (on: boolean) => void;
   setLearningMode: (m: LearningMode) => void;
   setSpoolModel: (m: 'torque' | 'lag') => void;
+  setSectionCut: (partial: Partial<{ enabled: boolean; axis: 'x' | 'y' | 'z'; offset: number; flip: boolean }>) => void;
   setExhaustStyle: (s: ExhaustStyle) => void;
   setCameraMode: (m: CameraMode) => void;
   setCameraPreset: (p: CameraPreset) => void;
@@ -324,6 +333,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
   // audience picker makes the lighter tiers discoverable.
   learningMode: 'engineering',
   spoolModel: 'torque',
+  sectionCut: { enabled: false, axis: 'z', offset: 0, flip: false },
   exhaustStyle: 'shader', // 'Dramatic' bright plume by default
   cameraMode: 'orthographic',
   cameraCommand: { kind: 'reset', preset: 'iso', focusPoint: null, nonce: 0 },
@@ -608,6 +618,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
     })),
   setLearningMode: (m) => set({ learningMode: m }),
   setSpoolModel: (m) => set({ spoolModel: m }),
+  setSectionCut: (partial) => set((s) => ({ sectionCut: { ...s.sectionCut, ...partial } })),
   setExhaustStyle: (s) => set({ exhaustStyle: s }),
   setCameraMode: (m) => set({ cameraMode: m }),
   setCameraPreset: (p) =>

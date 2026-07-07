@@ -84,6 +84,8 @@ export function ControlPanel() {
   const setLearningMode = useSimStore((s) => s.setLearningMode);
   const spoolModel = useSimStore((s) => s.spoolModel);
   const setSpoolModel = useSimStore((s) => s.setSpoolModel);
+  const sectionCut = useSimStore((s) => s.sectionCut);
+  const setSectionCut = useSimStore((s) => s.setSectionCut);
   const setViewMode = useSimStore((s) => s.setViewMode);
   const toggleLayer = useSimStore((s) => s.toggleLayer);
   const setAllLayers = useSimStore((s) => s.setAllLayers);
@@ -257,6 +259,70 @@ export function ControlPanel() {
                 All off
               </button>
             </div>
+          </>
+        )}
+      </div>
+
+      {/* --- Section cut ----------------------------------------------------
+          One renderer-level clipping plane: slice the whole engine along any
+          axis and slide the cut. Composes with view modes and layers. */}
+      <div className="panel-section">
+        <div className="panel-subtitle">Section Cut</div>
+        <div className="seg">
+          <button
+            className={`seg-btn${!sectionCut.enabled ? ' is-active' : ''}`}
+            onClick={() => setSectionCut({ enabled: false })}
+          >
+            Off
+          </button>
+          {(
+            [
+              { axis: 'z', label: 'Half' },
+              { axis: 'y', label: 'Horiz' },
+              { axis: 'x', label: 'Cross' },
+            ] as const
+          ).map(({ axis, label }) => (
+            <button
+              key={axis}
+              className={`seg-btn${sectionCut.enabled && sectionCut.axis === axis ? ' is-active' : ''}`}
+              title={
+                axis === 'z'
+                  ? 'Vertical half-section (the classic cutaway drawing)'
+                  : axis === 'y'
+                    ? 'Horizontal slice'
+                    : 'Transverse cross-section disc'
+              }
+              onClick={() => setSectionCut({ enabled: true, axis, offset: 0 })}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {sectionCut.enabled && (
+          <>
+            <div className="field">
+              <div className="field-head">
+                <span className="field-label">Cut position</span>
+                <span className="field-value">{sectionCut.offset.toFixed(2)} m</span>
+              </div>
+              <input
+                className="slider"
+                type="range"
+                min={sectionCut.axis === 'x' ? -3.5 : -2.3}
+                max={sectionCut.axis === 'x' ? 2.5 : 2.3}
+                step={0.02}
+                value={sectionCut.offset}
+                onChange={(e) => setSectionCut({ offset: +e.target.value })}
+              />
+            </div>
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                checked={sectionCut.flip}
+                onChange={() => setSectionCut({ flip: !sectionCut.flip })}
+              />
+              Keep the other side
+            </label>
           </>
         )}
       </div>

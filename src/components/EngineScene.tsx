@@ -51,6 +51,41 @@ function CaptureBridge() {
   return null;
 }
 
+/** Module-level plane + normal LUT so the per-change update allocates nothing. */
+const sectionPlane = new THREE.Plane(new THREE.Vector3(0, 0, -1), 0);
+const AXIS_NORMALS: Record<'x' | 'y' | 'z', THREE.Vector3> = {
+  x: new THREE.Vector3(1, 0, 0),
+  y: new THREE.Vector3(0, 1, 0),
+  z: new THREE.Vector3(0, 0, 1),
+};
+
+/**
+ * SectionCut — a single RENDERER-level clipping plane (gl.clippingPlanes),
+ * so every material in the scene is cut without any per-material wiring.
+ * Reads store.sectionCut reactively (user-driven, changes rarely per frame
+ * except while a slider drags — one Plane mutation each, no allocation).
+ */
+function SectionCut() {
+  const gl = useThree((s) => s.gl);
+  const cut = useSimStore((s) => s.sectionCut);
+  useEffect(() => {
+    if (!cut.enabled) {
+      gl.clippingPlanes = [];
+      return;
+    }
+    const sign = cut.flip ? 1 : -1;
+    sectionPlane.normal.copy(AXIS_NORMALS[cut.axis]).multiplyScalar(sign);
+    // Plane through the point offset·axis with normal sign·axis: the visible
+    // half-space is the one the normal points into (constant = −n·q).
+    sectionPlane.constant = -sign * cut.offset;
+    gl.clippingPlanes = [sectionPlane];
+    return () => {
+      gl.clippingPlanes = [];
+    };
+  }, [gl, cut]);
+  return null;
+}
+
 /**
  * FloorGrid — the subtle museum "floor" grid. Hidden in presentation mode so
  * beauty shots read as a dark void; self-subscribing so toggling presentation
@@ -107,6 +142,7 @@ export function EngineScene() {
 
       <PhysicsTicker />
       <CaptureBridge />
+      <SectionCut />
     </Canvas>
   );
 }
