@@ -237,6 +237,7 @@ export function Compressor() {
           boreInner={ROTOR.boreInner.lp}
           coneArms={boosterCones}
           material={drumMat}
+          thermalGrowth={0.004}
         />
       </group>
 
@@ -249,6 +250,7 @@ export function Compressor() {
           boreInner={ROTOR.boreInner.hp}
           coneArms={hpcCones}
           material={drumMat}
+          thermalGrowth={0.008}
         />
       </group>
 

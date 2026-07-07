@@ -23,11 +23,17 @@
  * shells, so the full-360° disks render in all four modes — the same policy
  * the drums and blade rows already follow.
  */
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
+import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { ROTOR } from '../data/engineLayout';
 import { createLatheAlongX } from '../geometry/annularSection';
+import { useSimStore } from '../store/useSimStore';
+
+/** Tt4 range mapped to 0…1 thermal-growth drive (visualization only). */
+const TT4_COLD_K = 288;
+const TT4_REDLINE_K = 1900;
 
 /** Proportions of the machined disk profile (defaults = core disks, ROTOR). */
 export interface DiskProportions {
@@ -134,6 +140,13 @@ export interface RotorDisksProps {
   coneArms?: ConeArmSpec[];
   /** Shared drum material, so live emissive tweaks reach the disks too. */
   material: THREE.Material;
+  /**
+   * Max radial thermal growth as a fraction of radius at redline Tt4
+   * (0/omitted = no growth). Deliberately ~4–6× real so heat-soak is visible
+   * on close zoom: hot disks swell, cold disks return. Scales the mesh in
+   * Y/Z only — axisymmetric about +X, so it commutes with the drum spin.
+   */
+  thermalGrowth?: number;
 }
 
 /** Stable default so an omitted prop never invalidates the useMemo below. */
@@ -145,7 +158,21 @@ export function RotorDisks({
   boreInner,
   coneArms = NO_ARMS,
   material,
+  thermalGrowth = 0,
 }: RotorDisksProps) {
+  const meshRef = useRef<THREE.Mesh>(null);
+
+  // Thermal growth rides the ALREADY-LAGGED spool.tt4, so the swell follows
+  // the hot section's thermal inertia for free (non-reactive read, per the
+  // established useFrame convention).
+  useFrame(() => {
+    if (thermalGrowth <= 0 || !meshRef.current) return;
+    const { spool } = useSimStore.getState();
+    const drive = Math.min(1, Math.max(0, (spool.tt4 - TT4_COLD_K) / (TT4_REDLINE_K - TT4_COLD_K)));
+    const s = 1 + thermalGrowth * drive;
+    meshRef.current.scale.set(1, s, s);
+  });
+
   // Disks differ per station, so we merge the per-station lathes (plus the
   // cone arms — same material) into ONE geometry: one draw call per section,
   // the same budget as the instanced rim tori this replaces.
@@ -162,5 +189,13 @@ export function RotorDisks({
     return merged;
   }, [xs, rimRadii, boreInner, coneArms]);
 
-  return <mesh geometry={geometry} material={material} castShadow={false} frustumCulled={false} />;
+  return (
+    <mesh
+      ref={meshRef}
+      geometry={geometry}
+      material={material}
+      castShadow={false}
+      frustumCulled={false}
+    />
+  );
 }

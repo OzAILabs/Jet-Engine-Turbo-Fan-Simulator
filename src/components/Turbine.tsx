@@ -231,6 +231,7 @@ export function Turbine() {
           boreInner={ROTOR.boreInner.hp}
           coneArms={hptCones}
           material={drumMaterial}
+          thermalGrowth={0.015}
         />
       </group>
 
@@ -243,6 +244,7 @@ export function Turbine() {
           boreInner={ROTOR.boreInner.lp}
           coneArms={lptCones}
           material={drumMaterial}
+          thermalGrowth={0.01}
         />
       </group>
 
