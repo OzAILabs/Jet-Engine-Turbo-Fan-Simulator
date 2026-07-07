@@ -61,6 +61,26 @@ describe('torque-balance spool dynamics', () => {
     }
   });
 
+  it('the CORE responds before the fan on a slam (real spool ordering)', () => {
+    const trace = run(idleState(), 100, 30);
+    const at = (sec: number) => trace[Math.round(sec / DT)];
+    for (const sec of [0.5, 1.0, 1.5]) {
+      const s = at(sec);
+      const n2Frac = (s.n2 - cfg.idleN2) / (cfg.takeoffN2 - cfg.idleN2);
+      const n1Frac = (s.n1 - cfg.idleN1) / (cfg.takeoffN1 - cfg.idleN1);
+      expect(n2Frac).toBeGreaterThan(n1Frac);
+    }
+  });
+
+  it('TIT overshoots the settled value mid-accel (the real EGT bump)', () => {
+    const trace = run(idleState(), 100, 60);
+    const settled = trace[trace.length - 1].tt4;
+    const peak = Math.max(...trace.map((s) => s.tt4));
+    expect(peak).toBeGreaterThan(settled + 30);
+    // …but the EEC topping limiter caps it near redline.
+    expect(peak).toBeLessThanOrEqual(cfg.turbineInletTempRedline + 40 + 1e-6);
+  });
+
   it('a chop decelerates back to idle (fuel authority works both ways)', () => {
     // Settle at takeoff first…
     const takeoffEnd = run(idleState(), 100, 60).pop()!;

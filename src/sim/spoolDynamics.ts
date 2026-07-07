@@ -93,8 +93,8 @@ export function transientSurgePenalty(targetN2: number, currentN2: number): numb
 
 /** EEC fuel-schedule authority [K per unit N2 error] — same scale as the cycle's accel bump. */
 export const FUEL_AUTHORITY_K = 1400;
-/** HP rotor "thermal inertia" [K·s per unit dN2/dt]: K = τ_want · G. */
-export const HP_TORQUE_GAIN = 1400;
+/** HP rotor "thermal inertia" [K·s per unit dN2/dt]. */
+export const HP_TORQUE_GAIN = 3500;
 /** Slew guard [1/s] — no physical spool changes speed faster than this. */
 const MAX_N2_RATE = 0.15;
 
@@ -112,24 +112,42 @@ export function tt4Required(n2: number, config: EngineConfig, isaTempOffsetC = 0
 }
 
 /**
- * Advance the running-regime state with the torque-balance model. The LP
- * spool stays a first-order follower (it IS the heavy slow partner — its lag
- * behind the HP spool is the physics being taught), and Tt4 becomes a real
- * state in the loop rather than a display lag.
+ * The LP spool speed the gas generator can SUSTAIN at a given N2 — the exact
+ * inverse of commandedSpeeds' lever mapping (N2 ∝ √tf, N1 ∝ tf^0.7 ⇒
+ * N1 tracks cOp(N2)^1.4), so the settled point is identical to the lever's
+ * target. The fan is DOWNSTREAM of the core: it can only spin as fast as the
+ * LPT power arriving from the gas generator allows.
+ */
+export function n1SustainedBy(n2: number, config: EngineConfig): number {
+  const cOp = Math.min(1.05, Math.max(0, (n2 - config.idleN2) / (config.takeoffN2 - config.idleN2)));
+  return config.idleN1 + (config.takeoffN1 - config.idleN1) * Math.pow(cOp, 1.4);
+}
+
+/**
+ * Advance the running-regime state with the torque-balance model. Tt4 is a
+ * real state in the loop (not a display lag), and the LP spool lags toward
+ * the speed the CURRENT core can sustain — so on a slam the core visibly
+ * responds first and the heavy fan follows, the real spool ordering.
  */
 export function advanceSpoolsTorque(
   prev: SpoolState,
-  targetN1: number,
+  _targetN1: number, // settled point comes from n1SustainedBy(targetN2) — kept for signature parity
   targetN2: number,
   dt: number,
   config: EngineConfig,
   isaTempOffsetC = 0,
 ): SpoolState {
-  // EEC fuel schedule → commanded TIT, floored at a flame-holding minimum and
-  // capped just past redline (the EEC's own topping limiter).
+  // EEC fuel schedule → commanded TIT, anchored at the COMMANDED speed's
+  // requirement plus authority on the gap: mid-accel this tops out above the
+  // settled TIT (the real accel temperature bump — EGT overshoots, and the
+  // redline+40 topping limiter actually binds on a full slam), and on a
+  // decel it cuts below the holding value, floored at a flame-holding min.
   const req = tt4Required(prev.n2, config, isaTempOffsetC);
   const tt4Cmd = Math.min(
-    Math.max(req + FUEL_AUTHORITY_K * (targetN2 - prev.n2), config.idleTurbineInletTemp * 0.9),
+    Math.max(
+      tt4Required(targetN2, config, isaTempOffsetC) + FUEL_AUTHORITY_K * (targetN2 - prev.n2),
+      config.idleTurbineInletTemp * 0.9,
+    ),
     config.turbineInletTempRedline + 40,
   );
 
@@ -142,9 +160,9 @@ export function advanceSpoolsTorque(
   // FADEC idle governor floor + redline-region ceiling.
   const n2 = Math.min(Math.max(prev.n2 + dN2, config.idleN2 * 0.985), config.takeoffN2 + 0.03);
 
-  // LP spool: heavy first-order follower (unchanged physics story).
+  // LP spool: heavy first-order follower of what the CORE can sustain now.
   const a1 = 1 - Math.exp(-dt / N1_TIME_CONSTANT);
-  const n1 = prev.n1 + (targetN1 - prev.n1) * a1;
+  const n1 = prev.n1 + (n1SustainedBy(n2, config) - prev.n1) * a1;
 
   const lpOmega = n1 * config.n1RatedRpm * TWO_PI_OVER_60;
   const hpOmega = n2 * config.n2RatedRpm * TWO_PI_OVER_60;
