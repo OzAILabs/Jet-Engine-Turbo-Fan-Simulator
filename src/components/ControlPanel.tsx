@@ -89,6 +89,9 @@ export function ControlPanel() {
   const setSpoolModel = useSimStore((s) => s.setSpoolModel);
   const sectionCut = useSimStore((s) => s.sectionCut);
   const setSectionCut = useSimStore((s) => s.setSectionCut);
+  const deterioration = useSimStore((s) => s.deterioration);
+  const setDeterioration = useSimStore((s) => s.setDeterioration);
+  const triggerBirdStrike = useSimStore((s) => s.triggerBirdStrike);
   const setViewMode = useSimStore((s) => s.setViewMode);
   const toggleLayer = useSimStore((s) => s.toggleLayer);
   const setAllLayers = useSimStore((s) => s.setAllLayers);
@@ -381,6 +384,40 @@ export function ControlPanel() {
             >
               Classic lag
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* --- Failure injection (Engineering tier) -------------------------- */}
+      {learningMode === 'engineering' && (
+        <div className="panel-section">
+          <div className="panel-subtitle">Failures</div>
+          <div className="btn-row">
+            <button
+              className="btn"
+              title="Fan imbalance: rippling thrust + EGT spike + vibration caution, clearing over ~30 s. Running engine only."
+              onClick={() => triggerBirdStrike()}
+            >
+              Bird strike
+            </button>
+          </div>
+          <div className="field">
+            <div className="field-head">
+              <span className="field-label">Service age</span>
+              <span className="field-value">
+                {deterioration < 0.05 ? 'new' : `+${Math.round(deterioration * 45)} °C EGT`}
+              </span>
+            </div>
+            <input
+              className="slider"
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={deterioration}
+              onChange={(e) => setDeterioration(+e.target.value)}
+              title="Blade erosion + deposits: an old engine makes the same thrust hotter - watch the EGT margin shrink."
+            />
           </div>
         </div>
       )}

@@ -174,6 +174,12 @@ export interface SimStore {
   surgeActive: boolean;
   /** Seconds since surge onset (drives the decaying oscillation). */
   surgeT: number;
+  /** Seconds since a bird strike (null = none): thrust ripple + EGT spike +
+   *  vibration caution, decaying over ~30 s as the debris clears. */
+  birdStrikeT: number | null;
+  /** Service age 0–1: blade erosion + deposits. An old engine makes the same
+   *  thrust HOTTER — this eats the EGT margin exactly like real time-on-wing. */
+  deterioration: number;
   instruments: Instruments;
   /** FADEC variable-geometry positions (VSV/VBV) — single source of truth for
    *  the 3D hardware, the audio, and any gauges. Computed each tick from N2. */
@@ -240,6 +246,9 @@ export interface SimStore {
   setApuRunning: (on: boolean) => void;
   setIgniterFailure: (on: boolean) => void;
   setVbvFailClosed: (on: boolean) => void;
+  /** Inject a bird strike NOW (running engine only; self-clears in ~30 s). */
+  triggerBirdStrike: () => void;
+  setDeterioration: (frac: number) => void;
 
   tick: (dt: number) => void;
 
@@ -327,6 +336,8 @@ export const useSimStore = create<SimStore>((set, get) => ({
   vbvFailClosed: false,
   surgeActive: false,
   surgeT: 0,
+  birdStrikeT: null,
+  deterioration: 0,
   instruments: buildInstruments(config, initialSpool, initialEngine, initialSeq),
   actuation: computeActuation(initialSpool.n2),
 
@@ -384,6 +395,9 @@ export const useSimStore = create<SimStore>((set, get) => ({
   setApuRunning: (on) => set({ apuRunning: on }),
   setIgniterFailure: (on) => set({ igniterFailure: on }),
   setVbvFailClosed: (on) => set({ vbvFailClosed: on, surgeActive: false, surgeT: 0 }),
+  triggerBirdStrike: () =>
+    set((s) => (s.startSeq.runState === 'running' ? { birdStrikeT: 0 } : {})),
+  setDeterioration: (frac) => set({ deterioration: clamp(frac, 0, 1) }),
 
   tick: (dt) => {
     const state = get();
@@ -512,6 +526,72 @@ export const useSimStore = create<SimStore>((set, get) => ({
         }
       }
 
+      // --- Injected failures ----------------------------------------------
+      // Bird strike: fan imbalance → rippling thrust + an EGT spike, decaying
+      // over ~30 s as the debris clears; EICAS vibration caution while live.
+      let birdStrikeT = state.birdStrikeT;
+      if (birdStrikeT !== null) {
+        birdStrikeT += dtClamped;
+        if (birdStrikeT > 30) birdStrikeT = null;
+      }
+      if (birdStrikeT !== null) {
+        const damp = Math.exp(-birdStrikeT / 9);
+        const ripple = 1 - 0.12 * damp * (0.6 + 0.4 * Math.sin(2 * Math.PI * 2.3 * birdStrikeT));
+        engineOut = {
+          ...engineOut,
+          netThrust: engineOut.netThrust * ripple,
+          coreThrust: engineOut.coreThrust * ripple,
+          egtC: engineOut.egtC + 55 * damp,
+          warnings: [
+            {
+              id: 'eng-vibration',
+              severity: 'caution',
+              message: 'ENG VIBRATION — fan imbalance after foreign-object strike',
+            },
+            ...engineOut.warnings,
+          ],
+        };
+      }
+      // Service age: an eroded, deposit-coated engine makes the SAME thrust
+      // hotter (the FADEC feeds more fuel to hold speed) — the classic
+      // time-on-wing EGT-margin loss, up to +45 °C at full deterioration.
+      if (state.deterioration > 0.001) {
+        engineOut = { ...engineOut, egtC: engineOut.egtC + state.deterioration * 45 };
+      }
+      // The cycle's own EGT-limit warnings were built BEFORE these additions —
+      // re-check the displayed value against the certified limits.
+      if (
+        engineOut.egtC > cfg.egtTakeoffLimitC &&
+        !engineOut.warnings.some((w) => w.id === 'egt-redline')
+      ) {
+        engineOut = {
+          ...engineOut,
+          warnings: [
+            {
+              id: 'egt-redline',
+              severity: 'critical',
+              message: `EGT ${Math.round(engineOut.egtC)} °C exceeds the ${cfg.egtTakeoffLimitC} °C takeoff limit`,
+            },
+            ...engineOut.warnings,
+          ],
+        };
+      } else if (
+        engineOut.egtC > cfg.egtMaxContinuousC &&
+        !engineOut.warnings.some((w) => w.id === 'egt-mct' || w.id === 'egt-redline')
+      ) {
+        engineOut = {
+          ...engineOut,
+          warnings: [
+            {
+              id: 'egt-mct',
+              severity: 'caution',
+              message: `EGT ${Math.round(engineOut.egtC)} °C above the ${cfg.egtMaxContinuousC} °C max-continuous limit (5-min takeoff window)`,
+            },
+            ...engineOut.warnings,
+          ],
+        };
+      }
+
       // VBV command: failed-closed pins the doors — there is no healthy-door
       // surge path in this model, so no door-snap recovery branch exists.
       const actuation: ActuationState = state.vbvFailClosed
@@ -530,6 +610,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
         surgeMargin,
         surgeActive,
         surgeT,
+        birdStrikeT,
         transientActive: penalty > 4,
         apuBleedPsi,
         startSeq: syncedSeq,
@@ -596,6 +677,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
       // Sub-idle surge is start-sequence territory — clear any latched event.
       surgeActive: false,
       surgeT: 0,
+      birdStrikeT: null,
       transientActive: false,
       apuBleedPsi,
       startSeq: nextSeq,
@@ -697,6 +779,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
       surgeMargin: engine.surgeMarginSteady,
       surgeActive: false,
       surgeT: 0,
+      birdStrikeT: null,
       transientActive: false,
       startSeq,
       fuelControl: 'RUN',
@@ -718,6 +801,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
       surgeMargin: engine.surgeMarginSteady,
       surgeActive: false,
       surgeT: 0,
+      birdStrikeT: null,
       transientActive: false,
       startSeq,
       fuelControl: 'RUN',
@@ -740,6 +824,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
       surgeMargin: engine.surgeMarginSteady,
       surgeActive: false,
       surgeT: 0,
+      birdStrikeT: null,
       transientActive: false,
       startSeq,
       fuelControl: 'CUTOFF',
