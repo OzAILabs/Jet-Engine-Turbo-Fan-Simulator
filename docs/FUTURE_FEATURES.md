@@ -89,6 +89,12 @@ completed, substantially changed, or intentionally deferred.
   (T-s diagram raw material), turbine-cooling bleed bookkeeping
   (coolingBleedFraction/Flow, hptRotorInletTemp), h & s in the station cards,
   6 new contract tests.
+- [x] **Phase 3 anatomy**: renderer-level section cut (Half/Horiz/Cross +
+  position slider), secondary-flow particles (oil circuit, VBV dump air,
+  HPT cooling air), combustor swirlers + atomizer tips, assembly-tree
+  explorer with story cards and fly-to camera. Deferred: click-any-part
+  inspection turntable (needs a per-part registry + instanced raycast
+  plumbing; the assembly tree covers the teaching value meanwhile).
 
 ## Planned Visual Realism
 
