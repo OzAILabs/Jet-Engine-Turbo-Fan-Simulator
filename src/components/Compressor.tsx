@@ -27,6 +27,7 @@
 import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { useSimStore } from '../store/useSimStore';
 import { AXIS, ROTOR, SPOOL_SPIN_SIGN } from '../data/engineLayout';
 import { createCompressorBladeGeometry } from '../geometry/compressorBladeGeometry';
@@ -63,6 +64,39 @@ const drumRadiusAt = (x: number): number =>
 
 /** How far the disk rims stand proud of the drum surface [m]. */
 const RIM_LIP = 0.012;
+
+/**
+ * Stage spacer bands + labyrinth seal teeth. Real spools aren't smooth tubes:
+ * between stages a raised spacer with knife-edge seal teeth rides the drum.
+ * Ours sit in the CLEAR axial gap between a stage's stator and the next rotor
+ * (both rows root at the drum skin here, so under-stator teeth would clip
+ * blades). One merged geometry per drum half — +1 draw call each. Band width
+ * adapts to the local gap (booster gaps are wide, late-HPC gaps are tight).
+ */
+function createSpacerSeals(rotorXs: number[]): THREE.BufferGeometry | null {
+  const parts: THREE.BufferGeometry[] = [];
+  for (let i = 0; i < rotorXs.length - 1; i++) {
+    const statorX = rotorXs[i] + STATOR_OFFSET;
+    const nextX = rotorXs[i + 1];
+    // 0.095 ≈ the two half-chords + margins bounding the free gap.
+    const width = THREE.MathUtils.clamp(nextX - statorX - 0.095, 0.02, 0.06);
+    const center = (statorX + nextX) / 2 + 0.005;
+    const drumR = drumRadiusAt(center);
+    const band = new THREE.CylinderGeometry(drumR + 0.006, drumR + 0.006, width, 48, 1, true);
+    band.rotateZ(-Math.PI / 2); // axis → +X
+    band.translate(center, 0, 0);
+    parts.push(band);
+    const teeth = width > 0.04 ? 3 : 2;
+    for (let k = 0; k < teeth; k++) {
+      const off = (k - (teeth - 1) / 2) * (width / teeth);
+      const tooth = new THREE.CylinderGeometry(drumR + 0.02, drumR + 0.02, 0.0045, 48);
+      tooth.rotateZ(-Math.PI / 2);
+      tooth.translate(center + off, 0, 0);
+      parts.push(tooth);
+    }
+  }
+  return parts.length > 0 ? mergeGeometries(parts) : null;
+}
 
 export function Compressor() {
   // Internals drive-train view: blade rows hide, drums/disks/cones stay.
@@ -191,6 +225,13 @@ export function Compressor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hpcStages]);
 
+  // Spacer bands + labyrinth teeth between stages, one merged mesh per drum.
+  const boosterSeals = useMemo(
+    () => createSpacerSeals(boosterRims.xs),
+    [boosterRims],
+  );
+  const hpcSeals = useMemo(() => createSpacerSeals(hpcRims.xs), [hpcRims]);
+
   // Drive cones tying each drum to its shaft so drum + disks + shaft read as
   // ONE rotating structure: the booster's FRONT disk reaches forward down to
   // the LP shaft (toward the fan-frame bearing); the HPC's REAR disk reaches
@@ -231,6 +272,7 @@ export function Compressor() {
       {/* Booster drum + machined disks + forward drive cone — LP spool. */}
       <group ref={boosterDrumGroup}>
         <mesh geometry={boosterDrumGeo} material={drumMat} position={[boosterDrumCenterX, 0, 0]} />
+        {boosterSeals && <mesh geometry={boosterSeals} material={drumMat} castShadow={false} />}
         <RotorDisks
           xs={boosterRims.xs}
           rimRadii={boosterRims.radii}
@@ -244,6 +286,7 @@ export function Compressor() {
       {/* HPC drum + machined disks + aft drive cone — HP spool. */}
       <group ref={hpcDrumGroup}>
         <mesh geometry={hpcDrumGeo} material={drumMat} position={[hpcDrumCenterX, 0, 0]} />
+        {hpcSeals && <mesh geometry={hpcSeals} material={drumMat} castShadow={false} />}
         <RotorDisks
           xs={hpcRims.xs}
           rimRadii={hpcRims.radii}

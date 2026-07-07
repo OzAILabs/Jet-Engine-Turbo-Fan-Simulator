@@ -79,12 +79,20 @@ completed, substantially changed, or intentionally deferred.
 - [ ] Give cutaway shells physical thickness and finished cut-edge faces.
   Deferred after the first implementation interfered with blade/internal
   animation visibility; revisit with a less intrusive geometry approach.
-- [ ] Stage spacer rings and rotating air seals (labyrinth) between disks.
+- [x] Stage spacer rings and rotating labyrinth air seals between compressor
+  stages (bands + knife-edge teeth ride the clear stator→rotor gaps on both
+  spinning drum halves). Turbine-side spacers still open (visually dense
+  there already).
 - [ ] Optional depth of field for presentation mode.
 - [ ] Improve rotating assembly motion:
   - Speed-dependent radial/temporal blade blur (a blur disc exists on the fan).
   - Subtle startup and shutdown vibration (basic sub-idle jitter exists).
   - Windmilling from flight speed when fuel is off (sim supports it; add cues).
+- [x] Fan blade flutter: tip-weighted 2-nodal-diameter traveling flap wave
+  above ~85% N1 (vertex-shader only).
+- [x] Rotor disks swell with heat soak (lagged Tt4-driven radial growth,
+  exaggerated for visibility; per-section sensitivity).
+- [x] Lube & scavenge gerotor visibly pumping below the AGB lube pad.
 
 ## Planned Flow and Atmosphere
 
