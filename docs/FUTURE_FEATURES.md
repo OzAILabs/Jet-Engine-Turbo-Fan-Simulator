@@ -74,6 +74,22 @@ completed, substantially changed, or intentionally deferred.
 - [x] Presentation mode: overlays/grid hidden, panels collapse to edge tabs,
   perspective + cinematic hero/intake/exhaust-low poses. (DoF deferred.)
 
+## Completed (2026-07 "Learning Platform Program" — see docs/IMPROVEMENT_PROGRAM.md)
+
+- [x] **Phase 0 quick strikes**: EGT station copy corrected (T49 vs LPT exit),
+  limit-explainer tooltips on the EICAS gauges, disk thermal growth, fan blade
+  flutter, lube gerotor, compressor stage spacers + labyrinth seals.
+- [x] **System layers**: 12 independently toggleable layers (rotors, stators,
+  fuel, oil-path hardware, bleed, electrical, …) AND-gated with the view
+  modes; modes act as presets. Collapsible checklist in the control panel.
+- [x] **Audience tiers**: Explore / Course / Engineering progressive
+  disclosure of the analytical panels (learningMode in the store; Phase 4
+  content will gate on it too).
+- [x] **Gas-path transparency**: specific entropy + enthalpy on every station
+  (T-s diagram raw material), turbine-cooling bleed bookkeeping
+  (coolingBleedFraction/Flow, hptRotorInletTemp), h & s in the station cards,
+  6 new contract tests.
+
 ## Planned Visual Realism
 
 - [ ] Give cutaway shells physical thickness and finished cut-edge faces.
