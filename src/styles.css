@@ -1722,3 +1722,9 @@ input.slider::-moz-range-thumb {
 .lesson-step-title { font-size: 14px; font-weight: 600; color: #e8eef5; margin-top: 4px; }
 .lesson-narration { font-size: 12.5px; line-height: 1.5; color: #b9c6d4; margin: 6px 0 10px; }
 .lesson-nav { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* --- Challenges -----------------------------------------------------------*/
+.ch-pass { color: #6fdc8c; font-weight: 700; }
+.ch-fail { color: #ff7a7a; font-weight: 700; }
+.ch-hints { margin: 8px 0 0; padding-left: 18px; font-size: 11.5px; color: #9daebe; }
+.ch-hints li { margin-bottom: 3px; }
