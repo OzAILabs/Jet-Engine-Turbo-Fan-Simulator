@@ -5,6 +5,7 @@
 import { EngineScene } from './components/EngineScene';
 import { AssemblyTreePanel } from './components/AssemblyTreePanel';
 import { GlossaryPanel } from './components/GlossaryPanel';
+import { LessonsPanel } from './components/LessonsPanel';
 import { ControlPanel } from './components/ControlPanel';
 import { ReadoutPanel } from './components/ReadoutPanel';
 import { ChartsPanel } from './components/ChartsPanel';
@@ -42,6 +43,7 @@ export default function App() {
         <div className="ui-col ui-left">
           <ControlPanel />
           <CameraControlsPanel />
+          <LessonsPanel />
           <AssemblyTreePanel />
           <GlossaryPanel />
         </div>
