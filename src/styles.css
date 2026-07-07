@@ -1673,3 +1673,28 @@ input.slider::-moz-range-thumb {
 .at-label.is-active { background: rgba(122, 160, 220, 0.22); color: #fff; }
 .at-card { margin-top: 8px; }
 .at-desc { font-size: 11.5px; line-height: 1.45; color: #9daebe; margin: 4px 0 0; }
+
+/* --- Glossary panel -------------------------------------------------------*/
+.gl-search {
+  width: 100%; box-sizing: border-box; background: #10151c; color: #c7d1dd;
+  border: 1px solid #2a3340; border-radius: 4px; padding: 4px 8px;
+  font-size: 12px; margin-bottom: 6px;
+}
+.gl-list { display: flex; flex-wrap: wrap; gap: 4px; max-height: 130px; overflow-y: auto; }
+.gl-term {
+  background: rgba(122, 160, 220, 0.08); border: 1px solid #2a3340; color: #aebccb;
+  border-radius: 10px; padding: 2px 8px; font-size: 11px; cursor: pointer;
+}
+.gl-term:hover { background: rgba(122, 160, 220, 0.18); }
+.gl-term.is-active { background: rgba(122, 160, 220, 0.3); color: #fff; }
+.gl-short { font-size: 12px; color: #d8e2ec; margin: 4px 0; font-style: italic; }
+.gl-detail { font-size: 11.5px; line-height: 1.45; color: #9daebe; margin: 4px 0; }
+.gl-formula {
+  display: block; font-size: 11.5px; color: #8fd0a8; background: #10151c;
+  border-radius: 4px; padding: 4px 8px; margin: 6px 0;
+}
+.gl-related { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.gl-link {
+  background: none; border: none; color: #6aa5e8; cursor: pointer;
+  font-size: 11px; text-decoration: underline; padding: 0;
+}
