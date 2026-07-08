@@ -70,7 +70,14 @@ function buildTrunkGeometry(hour: number): THREE.BufferGeometry {
     v3At(-2.25, hour, 0.95), // drops through the fan-frame strut region
   ];
   for (let x = -2.0; x <= 2.01; x += 0.25) {
-    pts.push(v3At(x, hour, coreCaseRadiusAt(x) + TRUNK_STANDOFF));
+    // The trunk hops OVER rings it would otherwise skewer at its cruising
+    // standoff: the two fuel-manifold tori (x 0.18 / 0.38, bands up to
+    // case+0.10) and the EGT ring main (x 1.58, band to case+0.066) all live
+    // in the trunk's 0.04–0.08 radial band — real conduits are clamped over
+    // such obstructions, so we lift the affected spline samples.
+    const overManifolds = x > -0.05 && x < 0.55 ? 0.06 : 0;
+    const overEgtRing = Math.abs(x - 1.58) < 0.25 ? 0.05 : 0;
+    pts.push(v3At(x, hour, coreCaseRadiusAt(x) + TRUNK_STANDOFF + Math.max(overManifolds, overEgtRing)));
   }
   return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 96, TRUNK_R, 8, false);
 }
@@ -83,10 +90,21 @@ interface BranchSpec {
   rEnd: number; // landing standoff above the case skin
 }
 const BRANCHES: BranchSpec[] = [
-  { x0: -1.02, x1: -0.88, h1: 4.0, rEnd: 0.04 }, // VSV actuator (right-hand unit)
-  { x0: -1.42, x1: -1.6, h1: 5.3, rEnd: 0.05 }, // ignition exciter lead
-  { x0: 0.16, x1: 0.3, h1: 3.4, rEnd: 0.075 }, // fuel manifold / nozzle solenoids
-  { x0: 0.4, x1: 0.5, h1: 5.4, rEnd: 0.05 }, // starter air valve (low on the case)
+  // VSV actuator (right-hand unit): lands INSIDE the raised barrel's radial
+  // band (case+0.068…0.132) at its aft end — not floating beneath it.
+  { x0: -1.02, x1: -0.86, h1: 4.0, rEnd: 0.115 },
+  // Ignition exciter feed: wraps the belly all the way to the near exciter
+  // box (clock 7.25, body band case+0.005…0.105) — it used to die at 5.3
+  // with nothing within a meter of arc.
+  { x0: -1.42, x1: -1.52, h1: 7.25, rEnd: 0.06 },
+  // Fuel staging-valve solenoids: approaches from FORWARD of the pilot ring
+  // and stays above the pigtail lattice, landing on the valve block's
+  // forward-top face (x 0.23…0.33 band) — the old run began inside the
+  // pilot manifold torus and ended in mid-air among the pigtails.
+  { x0: -0.2, x1: 0.23, h1: 4.5, rEnd: 0.105 },
+  // Starter air valve: into the canted SAV box (x 0.37…0.49, r ≈ 0.11…0.21)
+  // instead of passing underneath it at case+0.05.
+  { x0: 0.3, x1: 0.45, h1: 5.7, rEnd: 0.15 },
   { x0: 1.44, x1: EGT.x, h1: RIGHT_TRUNK, rEnd: EGT.rOffset }, // EGT ring junction
 ];
 

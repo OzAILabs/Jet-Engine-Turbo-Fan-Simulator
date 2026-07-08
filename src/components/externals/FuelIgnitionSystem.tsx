@@ -354,8 +354,23 @@ export function FuelIgnitionSystem() {
       tubeAtClock(VALVE_CLOCK, [[VALVE_X - 0.03, rValve], [(VALVE_X + pilot.x) / 2, rValve - 0.004], [pilot.x, rPilot]], 0.016),
       // aft branch → main ring
       tubeAtClock(VALVE_CLOCK, [[VALVE_X + 0.03, rValve], [(VALVE_X + main.x) / 2, rValve - 0.002], [main.x, rMain]], 0.016),
-      // supply stub climbing the HPC-exit ramp from the pump/HMU stack
-      tubeAtClock(VALVE_CLOCK, [[-0.05, coreCaseRadiusAt(-0.05) + 0.03], [0.05, coreCaseRadiusAt(0.05) + 0.04], [0.17, rValve - 0.015], [VALVE_X - 0.045, rValve]], 0.02, 24),
+      // Supply line all the way FROM the fuel pump/HMU stack (x −0.55,
+      // clock 4.5, standoff ~0.18) climbing the HPC-exit ramp to the valve —
+      // it used to begin in mid-air at x −0.05, half a meter from the pump.
+      tubeAtClock(
+        VALVE_CLOCK,
+        [
+          [-0.55, coreCaseRadiusAt(-0.55) + 0.18],
+          [-0.42, coreCaseRadiusAt(-0.42) + 0.1],
+          [-0.25, coreCaseRadiusAt(-0.25) + 0.05],
+          [-0.05, coreCaseRadiusAt(-0.05) + 0.03],
+          [0.05, coreCaseRadiusAt(0.05) + 0.04],
+          [0.17, rValve - 0.015],
+          [VALVE_X - 0.045, rValve],
+        ],
+        0.02,
+        32,
+      ),
     ];
     return mergeGeometries(parts) ?? parts[0];
   }, [pilot.x, main.x, rPilot, rMain, rValve]);
