@@ -16,7 +16,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { useSimStore } from '../store/useSimStore';
 import { AXIS, RADII } from '../data/engineLayout';
-import { CUTAWAY, createTube } from '../geometry/annularSection';
+import { CUTAWAY, createLatheAlongX, createTube } from '../geometry/annularSection';
 import { createCeramicLinerMaterial } from '../materials/hotSection';
 import { CombustorFlame } from './CombustorFlame';
 
@@ -62,6 +62,53 @@ export function Combustor() {
   const nozzleGeo = useMemo(() => new THREE.CylinderGeometry(0.03, 0.03, 0.12, 12), []);
   const nozzleMat = useMemo(
     () => new THREE.MeshStandardMaterial({ color: '#5a6470', metalness: 0.8, roughness: 0.35 }),
+    [],
+  );
+
+  // --- Dome + fuel stems (what the nozzles/swirlers MOUNT to) -------------
+  // The annular front wall of the fire can: nozzles and swirlers bolt through
+  // it, and each nozzle's fuel stem runs radially out through the dome rim
+  // toward the case (where the external manifold pigtails arrive). Without
+  // this plate the swirler hardware read as floating in mid-air. The dome
+  // respects the cutaway wedge exactly like the liners (same lathe
+  // convention); the 16 stems stay full-annulus like the nozzles do.
+  const domeGeo = useMemo(() => {
+    const x0 = AXIS.combustorStart - xCenter;
+    const parts: THREE.BufferGeometry[] = [
+      // Washer with real thickness, revolved with the liners' theta wedge.
+      createLatheAlongX(
+        [
+          [x0, INNER_LINER_RADIUS],
+          [x0 + 0.025, INNER_LINER_RADIUS],
+          [x0 + 0.025, RADII.combustorOuter],
+          [x0, RADII.combustorOuter],
+          [x0, INNER_LINER_RADIUS],
+        ],
+        wedge ? { segments: 64, ...wedge } : { segments: 64 },
+      ),
+    ];
+    for (let k = 0; k < NUM_FUEL_NOZZLES; k++) {
+      const theta = (k / NUM_FUEL_NOZZLES) * Math.PI * 2;
+      const stemLen = RADII.combustorOuter - FUEL_NOZZLE_RADIUS + 0.02;
+      const stem = new THREE.CylinderGeometry(0.014, 0.014, stemLen, 8);
+      stem.translate(0, FUEL_NOZZLE_RADIUS + stemLen / 2 - 0.01, 0);
+      stem.rotateX(theta);
+      stem.translate(x0 + 0.045, 0, 0);
+      parts.push(stem);
+    }
+    const merged = mergeGeometries(parts)!;
+    parts.forEach((g) => g.dispose());
+    return merged;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cutaway]);
+  const domeMat = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: '#5d6066',
+        metalness: 0.8,
+        roughness: 0.5,
+        side: THREE.DoubleSide,
+      }),
     [],
   );
 
@@ -172,6 +219,9 @@ export function Combustor() {
           rotation={n.rotation}
         />
       ))}
+
+      {/* Dome (the front wall the burner hardware mounts to) + fuel stems. */}
+      <mesh geometry={domeGeo} material={domeMat} castShadow={false} />
 
       {/* Swirler vanes + atomizer tips at every fuel-nozzle exit. */}
       <mesh geometry={swirlerGeo} material={swirlerMat} castShadow={false} />
