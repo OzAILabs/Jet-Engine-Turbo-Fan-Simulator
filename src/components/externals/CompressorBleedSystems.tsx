@@ -50,11 +50,11 @@ const hourOfPhi = (phi: number) => ((((-phi * 12) / (Math.PI * 2)) % 12) + 12) %
 const ARMS_PER_RING = 24;
 const ARM_COUNT = EXTERNALS.vsvRings.xs.length * ARMS_PER_RING;
 /** Ring twist at/below idle [rad] — vanes closed; eases to 0 at takeoff N2.
- *  Deliberately ~3× the scale-true twist: at true scale the ring motion and
+ *  Deliberately ~2× the scale-true twist: at true scale the ring motion and
  *  the ~3.5 cm rod stroke it drives are invisible at any sane camera
  *  distance. The rod stroke is DERIVED from this angle, so the linkage
  *  stays kinematically consistent. */
-const VSV_CLOSED_ANGLE = 0.17;
+const VSV_CLOSED_ANGLE = 0.12;
 /** Master torsion link: spans all four rings with a little overhang. */
 const LINK_LEN = 0.62;
 const LINK_X = (EXTERNALS.vsvRings.xs[0] + EXTERNALS.vsvRings.xs[3]) / 2;
@@ -108,9 +108,12 @@ export function CompressorBleedSystems() {
     [],
   );
 
-  // --- VSV unison rings + master torsion links (full + cutaway variants) ----
-  // All four rings and both links merge into ONE geometry: they rotate together
-  // as a single rigid "unison" assembly, so one mesh in one rotating group.
+  // --- VSV unison rings (full + cutaway variants) ---------------------------
+  // All four rings merge into ONE geometry rotating as a single "unison"
+  // assembly. The master links are NOT here: they belong to the actuator's
+  // MOVING pile below, so the rod → clevis → link drive chain is one rigid
+  // piece that can never visibly disconnect (the rings rotate under the
+  // sliding link — a sliding-guide read).
   const ringGeos = useMemo(() => {
     const build = (cut: boolean) => {
       const parts: THREE.BufferGeometry[] = [];
@@ -125,14 +128,6 @@ export function CompressorBleedSystems() {
         g.rotateY(Math.PI / 2);
         g.translate(x, 0, 0);
         parts.push(g);
-      }
-      // Master torsion links tie the rings together at clock 4 and clock 8.
-      for (const act of EXTERNALS.vsvActuators) {
-        const link = new THREE.BoxGeometry(LINK_LEN, 0.018, 0.03);
-        link.rotateX(phiOfClock(act.clock));
-        const { y, z } = clockToYZ(act.clock, LINK_R);
-        link.translate(LINK_X, y, z);
-        parts.push(link);
       }
       return mergeGeometries(parts)!;
     };
@@ -151,11 +146,15 @@ export function CompressorBleedSystems() {
     const movingSteel: THREE.BufferGeometry[] = [];
     const movingGold: THREE.BufferGeometry[] = [];
     for (const act of EXTERNALS.vsvActuators) {
-      const rMount = coreCaseRadiusAt(act.x) + 0.065;
-      // Local frame: barrel along X, nose tipped slightly inboard so the rod
-      // end lands on the torsion-link radius; then rotate to the clock slot.
+      // Barrel raised well proud of the case so it clears the master link's
+      // radial band (the link runs at LINK_R ≈ case+0.035 along this same
+      // clock lane — at the old 0.065 standoff the link skewered the barrel).
+      const rMount = coreCaseRadiusAt(act.x) + 0.1;
+      // Local frame: barrel along X, nose tipped inboard steeply enough that
+      // the rod end dives from the raised barrel down onto the link radius;
+      // then rotate to the clock slot.
       const place = (g: THREE.BufferGeometry) => {
-        g.rotateZ(0.12);
+        g.rotateZ(0.26);
         g.rotateX(phiOfClock(act.clock));
         const { y, z } = clockToYZ(act.clock, rMount);
         g.translate(act.x + 0.04, y, z);
@@ -164,16 +163,27 @@ export function CompressorBleedSystems() {
       const body = new THREE.CylinderGeometry(0.032, 0.032, 0.2, 16);
       body.rotateZ(Math.PI / 2); // cylinder +Y → engine +X
       steel.push(place(body));
-      const mount = new THREE.BoxGeometry(0.12, 0.05, 0.06); // case foot
-      mount.translate(0.02, -0.045, 0);
+      const mount = new THREE.BoxGeometry(0.12, 0.1, 0.06); // case foot (tall)
+      mount.translate(0.02, -0.07, 0);
       steel.push(place(mount));
       const clevis = new THREE.BoxGeometry(0.05, 0.046, 0.04); // grabs the link
       clevis.translate(-0.26, 0, 0);
       movingSteel.push(place(clevis));
-      const rod = new THREE.CylinderGeometry(0.011, 0.011, 0.16, 10);
+      // Rod long enough that its tail stays SHEATHED inside the barrel at
+      // full stroke — a piston must never separate from its cylinder.
+      const rod = new THREE.CylinderGeometry(0.011, 0.011, 0.3, 10);
       rod.rotateZ(Math.PI / 2);
-      rod.translate(-0.18, 0, 0);
+      rod.translate(-0.11, 0, 0);
       movingGold.push(place(rod));
+    }
+    // Master torsion links ride the MOVING pile: the rod drives them axially
+    // (clevis and link are one rigid piece), sliding through the ring guides.
+    for (const act of EXTERNALS.vsvActuators) {
+      const link = new THREE.BoxGeometry(LINK_LEN, 0.018, 0.03);
+      link.rotateX(phiOfClock(act.clock));
+      const { y, z } = clockToYZ(act.clock, LINK_R);
+      link.translate(LINK_X, y, z);
+      movingSteel.push(link);
     }
     return {
       steel: mergeGeometries(steel)!,
@@ -196,16 +206,20 @@ export function CompressorBleedSystems() {
       return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(v), 24, 0.012, 8, false);
     };
     const right = mk([
-      [-0.76, 4.0, 0.062], // off the clock-4 actuator aft end
-      [-0.7, 4.3, 0.04],
-      [-0.65, 4.7, 0.035],
-      [-0.6, 5.0, 0.03], // down toward the AGB / fuel-pump stack
+      [-0.74, 4.0, 0.126], // off the (raised) clock-4 actuator aft end
+      [-0.7, 4.3, 0.06],
+      [-0.65, 4.7, 0.045],
+      [-0.6, 4.8, 0.07],
+      [-0.56, 4.6, 0.14],
+      [-0.55, 4.5, 0.19], // INTO the fuel pump / HMU stack — no dangling end
     ]);
     const left = mk([
-      [-0.76, 8.0, 0.062], // clock-8 actuator wraps under the belly
-      [-0.72, 7.2, 0.04],
-      [-0.66, 6.2, 0.035],
-      [-0.6, 5.4, 0.03],
+      [-0.74, 8.0, 0.126], // clock-8 actuator wraps under the belly
+      [-0.72, 7.2, 0.05],
+      [-0.66, 6.2, 0.04],
+      [-0.6, 5.4, 0.05],
+      [-0.57, 4.9, 0.13],
+      [-0.55, 4.6, 0.19], // terminates in the same pump stack
     ]);
     return mergeGeometries([right, left])!;
   }, []);
