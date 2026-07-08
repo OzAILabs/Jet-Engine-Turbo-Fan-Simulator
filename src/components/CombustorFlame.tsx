@@ -111,21 +111,28 @@ const FRAG = /* glsl */ `
     float lay = vLayer;
     float aroundScale = mix(6.0, 11.0, lay);
     float axialScale  = mix(3.0, 5.5, lay);
-    // Fast even at light-off (real combustion is never a slow dance), and a
-    // burst slam on top so ignition TEARS through the can.
-    float flowSpeed   = (2.6 + 3.4 * uPower + 2.5 * uBurst) * mix(0.7, 1.35, lay);
-    float swirlSpeed  = (0.5 + 1.3 * uPower) * mix(1.0, -1.4, lay); // counter-swirl layers
+    // REAL combustor liner velocities are ~25-50 m/s through a ~1 m can — the
+    // gas transits in tens of milliseconds. The scroll here targets ~2.5
+    // can-lengths/s at idle rising past ~6 at takeoff (any faster and the
+    // low-octave noise strobes against 60 fps), with the ignition burst
+    // slamming on top so light-off TEARS through the can.
+    float flowSpeed   = (9.0 + 15.0 * uPower + 9.0 * uBurst) * mix(0.75, 1.3, lay);
+    float swirlSpeed  = (0.8 + 2.2 * uPower) * mix(1.0, -1.3, lay); // counter-swirl layers
 
     // Noise domain: u wraps 0..1, so scale by whole numbers to keep the seam
     // invisible at integer around-scales; add domain warp for licking tongues.
+    // The warp scrolls FAST and hard — it is what keeps the fire reading as
+    // boiling turbulence instead of one coherent sheet drifting aft.
     vec2 p = vec2(vUv.x * aroundScale + swirlSpeed * t, vUv.y * axialScale - flowSpeed * t);
     p.x += lay * 7.7; // decorrelate layers
-    float warp = fbm(p * 1.7 + vec2(0.0, -t * 1.6));
-    float n = fbm(p + (0.55 + 0.35 * uPower) * vec2(warp, warp * 0.8));
+    float warp = fbm(p * 1.7 + vec2(t * 1.3, -t * 4.5));
+    float n = fbm(p + (0.7 + 0.5 * uPower) * vec2(warp, warp * 0.8));
 
-    // Roaring: two incommensurate global pulsations, harder with power.
+    // Roaring: incommensurate global pulsations, harder with power, plus a
+    // fast violent flicker while the ignition burst is live.
     float roar = 1.0 + (0.10 + 0.28 * uPower) * sin(t * 23.7 + lay * 2.1)
-                     + (0.06 + 0.20 * uPower) * sin(t * 14.3 + lay * 4.7);
+                     + (0.06 + 0.20 * uPower) * sin(t * 14.3 + lay * 4.7)
+                     + 0.35 * uBurst * sin(t * 47.0 + lay * 3.3);
 
     // Coverage: high power lowers the cut so fire fills more of the volume —
     // near-total at takeoff — and the ignition burst floods it further.
