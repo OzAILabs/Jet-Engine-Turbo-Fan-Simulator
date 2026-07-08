@@ -26,6 +26,7 @@ import { Bearings } from './Bearings';
 import { Nozzles } from './Nozzles';
 import { FlowParticles } from './FlowParticles';
 import { ExhaustPlume } from './ExhaustPlume';
+import { StartSmoke } from './StartSmoke';
 import { StationMarkers } from './StationMarkers';
 import { SectionLabels } from './SectionLabel';
 import { VelocityVectors } from './VelocityVectors';
@@ -123,6 +124,9 @@ export function EngineModel3D() {
         <>
           <FlowParticles />
           <ExhaustPlume />
+          {/* Light-off puff: unburnt fuel out the core nozzle — independent of
+              the exhaust style, driven by the start sequence. */}
+          <StartSmoke />
           <VelocityVectors />
         </>
       )}
