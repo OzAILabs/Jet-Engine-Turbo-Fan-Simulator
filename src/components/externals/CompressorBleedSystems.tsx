@@ -49,8 +49,12 @@ const hourOfPhi = (phi: number) => ((((-phi * 12) / (Math.PI * 2)) % 12) + 12) %
 // --- VSV constants ----------------------------------------------------------
 const ARMS_PER_RING = 24;
 const ARM_COUNT = EXTERNALS.vsvRings.xs.length * ARMS_PER_RING;
-/** Ring twist at/below idle [rad] — vanes closed; eases to 0 at takeoff N2. */
-const VSV_CLOSED_ANGLE = 0.06;
+/** Ring twist at/below idle [rad] — vanes closed; eases to 0 at takeoff N2.
+ *  Deliberately ~3× the scale-true twist: at true scale the ring motion and
+ *  the ~3.5 cm rod stroke it drives are invisible at any sane camera
+ *  distance. The rod stroke is DERIVED from this angle, so the linkage
+ *  stays kinematically consistent. */
+const VSV_CLOSED_ANGLE = 0.17;
 /** Master torsion link: spans all four rings with a little overhang. */
 const LINK_LEN = 0.62;
 const LINK_X = (EXTERNALS.vsvRings.xs[0] + EXTERNALS.vsvRings.xs[3]) / 2;
