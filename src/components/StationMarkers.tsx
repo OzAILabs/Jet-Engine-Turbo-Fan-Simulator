@@ -45,6 +45,10 @@ export function StationMarkers() {
   // We gate HERE instead of flipping showStationLabels, so the user's
   // overlay checkbox survives a round trip through presentation mode.
   if (presentationMode) return null;
+  // The "Station markers" overlay toggle owns the WHOLE layer — the blue
+  // spheres and leader lines, not just the text tags — so the clean default
+  // view has no floating diagram markers. Off by default (see the store).
+  if (!showStationLabels) return null;
 
   return (
     <group>

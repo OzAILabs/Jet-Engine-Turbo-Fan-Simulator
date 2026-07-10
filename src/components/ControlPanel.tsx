@@ -54,7 +54,7 @@ const TOGGLES: {
     | 'showSecondaryFlows';
   label: string;
 }[] = [
-  { key: 'showStationLabels', label: 'Station labels' },
+  { key: 'showStationLabels', label: 'Station markers' },
   { key: 'showSectionLabels', label: 'Section labels' },
   { key: 'showFlowParticles', label: 'Flow particles' },
   { key: 'showTempColors', label: 'Temp/pressure colors' },
