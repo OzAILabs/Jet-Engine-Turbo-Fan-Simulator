@@ -28,6 +28,7 @@ import { FlowParticles } from './FlowParticles';
 import { ExhaustPlume } from './ExhaustPlume';
 import { StartSmoke } from './StartSmoke';
 import { RudBladeOff } from './RudBladeOff';
+import { RudAftermath } from './RudAftermath';
 import { StationMarkers } from './StationMarkers';
 import { SectionLabels } from './SectionLabel';
 import { VelocityVectors } from './VelocityVectors';
@@ -135,8 +136,10 @@ export function EngineModel3D() {
               the exhaust style, driven by the start sequence. */}
           <StartSmoke />
           {/* Catastrophic failure: free blade, impact sparks, scorch (mounts
-              only while a RUD event exists). */}
+              only while a RUD event exists) + the external drama — smoke,
+              fire, debris. */}
           <RudBladeOff />
+          <RudAftermath />
           <VelocityVectors />
         </>
       )}
