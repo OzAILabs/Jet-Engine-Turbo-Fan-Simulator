@@ -221,8 +221,9 @@ export function Fan() {
   });
 
   // The released blade's slot stays EMPTY (identity changes only on trigger
-  // or reset — a rare, user-driven re-render).
-  const goneBlade = useSimStore((s) => s.rud?.bladeIndex ?? null);
+  // or reset — a rare, user-driven re-render). Only the fan-blade-off event
+  // releases a FAN blade; a disk burst wrecks the core, not this row.
+  const goneBlade = useSimStore((s) => (s.rud?.variant === 'fbo' ? s.rud.bladeIndex : null));
 
   return (
     <group ref={wobbleRef}>
