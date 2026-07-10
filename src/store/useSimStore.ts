@@ -353,8 +353,10 @@ export const useSimStore = create<SimStore>((set, get) => ({
   cameraCommand: { kind: 'reset', preset: 'iso', focusPoint: null, nonce: 0 },
   paused: false,
   debugMode: false,
-  showStationLabels: true,
-  showSectionLabels: true,
+  // Off by default for a clean opening view; both re-enable from the overlay
+  // toggles in ControlPanel ("Station labels" / "Section labels").
+  showStationLabels: false,
+  showSectionLabels: false,
   showFlowParticles: true,
   showTempColors: true,
   showVelocityVectors: false,
