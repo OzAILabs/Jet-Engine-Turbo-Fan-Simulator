@@ -446,10 +446,46 @@ export function createNacelleShellDoorsOff(): THREE.BufferGeometry {
     });
     remapSubLatheUVs(strip, band.v, center - half, half * 2);
     parts.push(strip);
+    // Ragged skin flaps hanging off both edges of each remnant strip —
+    // the tearing left them behind (SWA 1380's mangled leftovers).
+    for (const [edge, dir] of [
+      [center - half, -1],
+      [center + half, 1],
+    ]) {
+      for (let k = 0; k < 3; k++) {
+        const fx0 = FAN_COWL.x0 + 0.15 + k * 0.7 + 0.2 * jag(k, 1, edge > center ? 5 : 9);
+        const fx1 = fx0 + 0.35 + 0.3 * jag(k, 2, 7);
+        const bend = (0.35 + 0.7 * jag(k, 3, 11)) * (jag(k, 4, 13) > 0.5 ? 1 : -1);
+        parts.push(tornFlap(fx0, Math.min(fx1, FAN_COWL.x1 - 0.1), edge, dir * 0.16, bend, k + (dir > 0 ? 20 : 40)));
+      }
+    }
   }
   const merged = mergeGeometries(parts)!;
   parts.forEach((g) => g.dispose());
   return merged;
+}
+
+/**
+ * Each door SHATTERS into these ragged shreds half a second into the peel —
+ * a blade-off doesn't unbolt panels, it explodes them (the reference
+ * photos: what departs is confetti, what remains is mangled).
+ */
+export function createDoorShreds(): FanCowlDoor[] {
+  const spans: Array<[number, number]> = [
+    [THETA_BOTTOM + FAN_COWL.latchHalf, THETA_TOP - FAN_COWL.hingeHalf],
+    [THETA_TOP + FAN_COWL.hingeHalf, Math.PI * 2 + THETA_BOTTOM - FAN_COWL.latchHalf],
+  ];
+  const xMid = (FAN_COWL.x0 + FAN_COWL.x1) / 2;
+  const shreds: FanCowlDoor[] = [];
+  spans.forEach(([t0, t1], d) => {
+    for (let c = 0; c < 3; c++) {
+      const ta = THREE.MathUtils.lerp(t0, t1, c / 3);
+      const tb = THREE.MathUtils.lerp(t0, t1, (c + 1) / 3);
+      shreds.push(tornPiece(FAN_COWL.x0, xMid, ta, tb, d * 30 + c * 2));
+      shreds.push(tornPiece(xMid, FAN_COWL.x1, ta, tb, d * 30 + c * 2 + 1));
+    }
+  });
+  return shreds;
 }
 
 export interface FanCowlDoor {
@@ -458,6 +494,97 @@ export interface FanCowlDoor {
   center: THREE.Vector3;
   /** Unit outward radial at the door's mid-arc (its fly-away direction). */
   outward: THREE.Vector3;
+}
+
+/** Deterministic hash in [0,1) for jagged-edge displacement. */
+const jag = (i: number, j: number, seed: number) =>
+  ((((i * 73856093) ^ (j * 19349663) ^ (seed * 83492791)) >>> 0) % 1000) / 1000;
+
+/**
+ * A TORN patch of cowl skin: a (θ, x) grid on the outer-skin surface whose
+ * boundary vertices are displaced inward by pseudo-random amounts — ragged
+ * edges, not machine cuts. UVs are absolute, so it wears exactly the painted
+ * skin it was torn from. Used for flying shreds, remnant strips and the
+ * static torn flaps left around an opening.
+ */
+export function tornPatchGeometry(
+  x0: number,
+  x1: number,
+  t0: number,
+  t1: number,
+  seed: number,
+  opts: { jagX?: number; jagT?: number; cols?: number; rows?: number } = {},
+): THREE.BufferGeometry {
+  const { jagX = 0.09, jagT = 0.07, cols = 8, rows = 4 } = opts;
+  const last = PROFILE.length - 1;
+  const positions: number[] = [];
+  const uvs: number[] = [];
+  const indices: number[] = [];
+  for (let i = 0; i <= cols; i++) {
+    for (let j = 0; j <= rows; j++) {
+      let theta = THREE.MathUtils.lerp(t0, t1, i / cols);
+      let x = THREE.MathUtils.lerp(x0, x1, j / rows);
+      // Displace boundary vertices INWARD (never outward — a tear loses
+      // material). Corners jag on both axes.
+      if (i === 0) theta += jagT * jag(i, j, seed);
+      if (i === cols) theta -= jagT * jag(i, j, seed + 1);
+      if (j === 0) x += jagX * jag(i, j, seed + 2);
+      if (j === rows) x -= jagX * jag(i, j, seed + 3);
+      const r = rOnBranch(x, last, NOSE_INDEX);
+      positions.push(x, -r * Math.sin(theta), r * Math.cos(theta));
+      uvs.push(theta / (Math.PI * 2), vOnBranch(x, last, NOSE_INDEX));
+    }
+  }
+  for (let i = 0; i < cols; i++) {
+    for (let j = 0; j < rows; j++) {
+      const a = i * (rows + 1) + j;
+      const b = a + rows + 1;
+      indices.push(a, b, a + 1, b, b + 1, a + 1);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/** A torn patch, centered on its centroid, ready to fly (like a door). */
+function tornPiece(x0: number, x1: number, t0: number, t1: number, seed: number): FanCowlDoor {
+  const geo = tornPatchGeometry(x0, x1, t0, t1, seed);
+  const midX = (x0 + x1) / 2;
+  const midR = rOnBranch(midX, PROFILE.length - 1, NOSE_INDEX);
+  const mid = (t0 + t1) / 2;
+  const outward = new THREE.Vector3(0, -Math.sin(mid), Math.cos(mid));
+  const center = new THREE.Vector3(midX, outward.y * midR, outward.z * midR);
+  geo.translate(-center.x, -center.y, -center.z);
+  return { geometry: geo, center, outward };
+}
+
+/**
+ * Static torn FLAP welded along an opening's border: a small ragged patch
+ * bent outward about its attached edge (an axial line at θ = tAttach), the
+ * way skin petals around a puncture or tears at a departed panel's frame.
+ */
+function tornFlap(
+  x0: number,
+  x1: number,
+  tAttach: number,
+  arc: number,
+  bend: number,
+  seed: number,
+): THREE.BufferGeometry {
+  const geo = tornPatchGeometry(x0, x1, tAttach, tAttach + arc, seed, { cols: 5, rows: 3 });
+  // Rotate about the attached edge: the axial line at θ = tAttach, radius r.
+  const midX = (x0 + x1) / 2;
+  const r = rOnBranch(midX, PROFILE.length - 1, NOSE_INDEX);
+  const py = -r * Math.sin(tAttach);
+  const pz = r * Math.cos(tAttach);
+  geo.translate(0, -py, -pz);
+  geo.rotateX(bend);
+  geo.translate(0, py, pz);
+  return geo;
 }
 
 /** A shell piece cut between x0..x1 and θ t0..t1, centered on its centroid. */
@@ -546,17 +673,25 @@ export function createNacelleShellBurstHole(): THREE.BufferGeometry {
   const aft = createLatheAlongX(aftSub.pts, { segments: 140 });
   remapSubLatheUVs(aft, aftSub.v, 0, Math.PI * 2);
   parts.push(aft);
+  // PETALING: skin flaps bent hard outward around the puncture — the classic
+  // uncontained-failure signature (see any NTSB rotor-burst photo).
+  for (let k = 0; k < 3; k++) {
+    const fx0 = BURST_BAY.x0 + 0.05 + k * 0.22;
+    const fx1 = fx0 + 0.28;
+    parts.push(tornFlap(fx0, fx1, c - BURST_BAY.half, -0.18, 0.7 + 0.5 * jag(k, 1, 51), 60 + k));
+    parts.push(tornFlap(fx0 + 0.08, fx1, c + BURST_BAY.half, 0.18, -(0.7 + 0.5 * jag(k, 2, 53)), 70 + k));
+  }
   const merged = mergeGeometries(parts)!;
   parts.forEach((g) => g.dispose());
   return merged;
 }
 
-/** The punched-out skin, as two unequal tumbling fragments. */
+/** The punched-out skin: unequal RAGGED fragments (torn, not machined). */
 export function createBurstFragments(): [FanCowlDoor, FanCowlDoor] {
   const c = clockToTheta(BURST_BAY.clock);
   return [
-    cutShellPiece(BURST_BAY.x0, BURST_BAY.x1, c - BURST_BAY.half, c - 0.04),
-    cutShellPiece(BURST_BAY.x0, BURST_BAY.x1 - 0.35, c + 0.04, c + BURST_BAY.half),
+    tornPiece(BURST_BAY.x0, BURST_BAY.x1, c - BURST_BAY.half, c - 0.04, 81),
+    tornPiece(BURST_BAY.x0, BURST_BAY.x1 - 0.35, c + 0.04, c + BURST_BAY.half, 82),
   ];
 }
 

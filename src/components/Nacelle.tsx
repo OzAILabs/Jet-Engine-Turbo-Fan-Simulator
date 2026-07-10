@@ -26,6 +26,7 @@ import {
   createNacelleCloseouts,
   createNacelleShellDoorsOff,
   createFanCowlDoors,
+  createDoorShreds,
   createNacelleShellBurstHole,
   createBurstFragments,
   createBayLiner,
@@ -100,8 +101,11 @@ export function Nacelle() {
       doorsGone ? createNacelleShellDoorsOff() : holeOpen ? createNacelleShellBurstHole() : null,
     [doorsGone, holeOpen],
   );
+  // fbo: the two doors PEEL for half a second, then shatter into shreds.
+  // burst: the punched-out skin flies as two ragged fragments immediately.
+  const doors = useMemo(() => (doorsGone ? createFanCowlDoors() : null), [doorsGone]);
   const flying = useMemo(
-    () => (doorsGone ? createFanCowlDoors() : holeOpen ? createBurstFragments() : null),
+    () => (doorsGone ? createDoorShreds() : holeOpen ? createBurstFragments() : null),
     [doorsGone, holeOpen],
   );
   // Charred liner behind the opening so the wound reads BLACK, not the
@@ -128,62 +132,72 @@ export function Nacelle() {
       }),
     [],
   );
-  const flyRefs = [useRef<THREE.Group>(null), useRef<THREE.Group>(null)];
+  const doorRefs = [useRef<THREE.Group>(null), useRef<THREE.Group>(null)];
+  const flyRefs = useRef<(THREE.Group | null)[]>([]);
   const scratch = useMemo(() => new THREE.Vector3(), []);
+  /** Doors peel this long, then explode into the shreds. */
+  const PEEL_END = 0.55;
+  /** Deterministic per-shred hash in [0,1). */
+  const h = (i: number, k: number) => (((i * 37 + k * 61) % 23) / 23 + ((i * 13) % 5) / 5) / 2;
   useFrame(() => {
-    if (!flying) return;
     const rud = useSimStore.getState().rud;
     if (!rud) return;
     const t = Math.max(0, rud.t - rud.doorsDepartT);
-    flyRefs.forEach((ref, i) => {
-      const g = ref.current;
-      if (!g) return;
-      const d = flying[i];
-      const sign = i === 0 ? 1 : -1;
-      if (rud.variant === 'fbo') {
-        // TWO-PHASE departure. Phase 1 (0–0.8 s): the door PEELS about its
-        // 12:00 hinge line, shuddering, so the tearing is watchable. Phase 2:
-        // it lets go — swept aft, floating outward, tumbling, ~10 s on stage.
-        if (t > 14) {
-          g.visible = false;
+
+    // --- Phase 1 (fbo): the doors shudder and PEEL about the 12:00 hinge. --
+    if (doors) {
+      doorRefs.forEach((ref, i) => {
+        const g = ref.current;
+        if (!g) return;
+        if (t >= PEEL_END) {
+          g.visible = false; // it just exploded — the shreds take over
           return;
         }
         g.visible = true;
-        const peel = Math.min(t / 0.8, 1);
-        const ang =
-          sign * (1.05 * peel * peel + 0.05 * Math.sin(38 * t) * peel * (1 - peel) * 4);
-        // Hinge pivot: the 12:00 line over the door bay's mid-length.
-        const hx = (FAN_COWL.x0 + FAN_COWL.x1) / 2;
-        const hr = 1.81; // outer skin radius over the bay
-        scratch.set(d.center.x - hx, d.center.y - hr, d.center.z); // center − pivot
+        const sign = i === 0 ? 1 : -1;
+        const peel = t / PEEL_END;
+        const ang = sign * (0.55 * peel * peel + 0.18 * Math.sin(43 * t) * peel * (1 - peel));
+        const hr = 1.81; // outer skin radius over the bay (the 12:00 hinge line)
+        const d = doors[i];
+        scratch.set(0, d.center.y - hr, d.center.z);
         const cos = Math.cos(ang);
         const sin = Math.sin(ang);
-        const ry = scratch.y * cos - scratch.z * sin;
-        const rz = scratch.y * sin + scratch.z * cos;
-        const tf = Math.max(0, t - 0.8);
-        // Slow, fluttering panels (they have huge drag): drift aft and out,
-        // sinking gently — in frame for ~10 s, watchable, not a blink.
         g.position.set(
-          d.center.x + 1.2 * tf,
-          hr + ry + d.outward.y * (1.3 * tf + 0.2 * tf * tf) - 0.35 * tf * tf,
-          rz + d.outward.z * (1.3 * tf + 0.2 * tf * tf),
+          d.center.x,
+          hr + scratch.y * cos - scratch.z * sin,
+          scratch.y * sin + scratch.z * cos,
         );
-        g.rotation.set(ang + sign * 1.7 * tf, sign * 0.7 * tf, -1.1 * tf);
-      } else {
-        // Burst fragments: violent, fast, radial — shrapnel, not doors.
-        if (t > 5) {
+        g.rotation.set(ang, 0, 0);
+      });
+    }
+
+    // --- Flying skin: fbo shreds after the peel, burst fragments at once. --
+    if (flying) {
+      const t0 = rud.variant === 'fbo' ? PEEL_END : 0;
+      const ts = t - t0;
+      flyRefs.current.forEach((g, i) => {
+        if (!g) return;
+        const d = flying[i];
+        if (!d || ts <= 0 || ts > 4 + 8 * h(i, 4)) {
           g.visible = false;
           return;
         }
         g.visible = true;
+        // Violent, scattered: every shred gets its own speed, drift and spin
+        // — confetti in a hurricane, not synchronized swimming.
+        const vOut = rud.variant === 'fbo' ? 2.5 + 7 * h(i, 1) : 8 + 8 * h(i, 1);
+        const vAft = 1.5 + 5 * h(i, 2);
+        const grav = 1.2 + 2.5 * h(i, 3);
+        const s1 = (3 + 11 * h(i, 5)) * (h(i, 6) > 0.5 ? 1 : -1);
+        const s2 = (2 + 8 * h(i, 7)) * (h(i, 8) > 0.5 ? 1 : -1);
         g.position.set(
-          d.center.x + 3 * t,
-          d.center.y + d.outward.y * (11 * t) - 4.9 * t * t,
-          d.center.z + d.outward.z * (11 * t),
+          d.center.x + vAft * ts + 0.4 * Math.sin(3 * ts + i),
+          d.center.y + d.outward.y * vOut * ts - 0.5 * grav * ts * ts,
+          d.center.z + d.outward.z * vOut * ts,
         );
-        g.rotation.set(sign * 9 * t, 2.5 * t, sign * 5 * t);
-      }
-    });
+        g.rotation.set(s1 * ts, s2 * ts, (s1 - s2) * 0.5 * ts);
+      });
+    }
   });
   // Cut faces read as sectioned structure: flat, non-shiny, slightly darker
   // than the paint (museum-cutaway style). Only shown in cutaway (opaque),
@@ -259,11 +273,28 @@ export function Nacelle() {
       {/* Charred bay liner behind any opened skin. */}
       {bayLiner && viewMode !== 'cutaway' && <mesh geometry={bayLiner} material={bayMat} />}
 
-      {/* Departed skin — peeling/tumbling doors or blasted fragments. */}
+      {/* Departed skin: the peeling doors (first half-second, fbo)... */}
+      {doors && viewMode !== 'cutaway' && (
+        <>
+          {doors.map((d, i) => (
+            <group key={`door-${i}`} ref={doorRefs[i]} position={d.center.toArray()}>
+              <mesh geometry={d.geometry} material={skinMat} />
+            </group>
+          ))}
+        </>
+      )}
+      {/* ...then the ragged shreds / burst fragments, scattering violently. */}
       {flying && viewMode !== 'cutaway' && (
         <>
           {flying.map((d, i) => (
-            <group key={i} ref={flyRefs[i]} position={d.center.toArray()}>
+            <group
+              key={`shred-${i}`}
+              ref={(el) => {
+                flyRefs.current[i] = el;
+              }}
+              position={d.center.toArray()}
+              visible={false}
+            >
               <mesh geometry={d.geometry} material={skinMat} />
             </group>
           ))}

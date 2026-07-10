@@ -26,13 +26,14 @@ const N_DEBRIS = 44;
 const SMOKE_LIFE_S = 2.4; // per-particle loop period
 const DEBRIS_LIFE_S = 1.8;
 
-/** Burst-site anchor AT THE TORN COWL SKIN (see BURST_BAY in
- *  nacelleGeometry): the fragments opened a hole here, so the fire and the
- *  smoke column pour OUT of it — buried at core radius they were just a
- *  glow leaking through the paint. */
-const BURST_X = 1.15;
-const BURST_CLOCK = 7.7; // keep in lockstep with BURST_BAY.clock
-const BURST_R = 1.5;
+/** Fire/smoke anchors AT THE TORN COWL SKIN (buried at core radius they
+ *  were just a glow leaking through the paint). burst: the punched bay over
+ *  the HPT (lockstep with BURST_BAY). fbo: the opened fan-cowl door bay,
+ *  where the fan-case oil fire burns (United 328 style). */
+const SITE = {
+  burst: { x: 1.15, clock: 7.7, r: 1.5 },
+  fbo: { x: -1.65, clock: 7.7, r: 1.72 },
+} as const;
 
 const h = (i: number, k: number) => (((i * 73 + k * 31) % 19) / 19 + ((i * 37) % 7) / 7) / 2 - 0.5;
 
@@ -90,10 +91,11 @@ export function RudAftermath() {
   const tex = useMemo(getFlameTexture, []);
   const puff = useMemo(getPuffTexture, []);
 
+  const site = SITE[rud?.variant ?? 'burst'];
   const burstSite = useMemo(() => {
-    const { y, z } = clockToYZ(BURST_CLOCK, BURST_R);
-    return new THREE.Vector3(BURST_X, y, z);
-  }, []);
+    const { y, z } = clockToYZ(site.clock, site.r);
+    return new THREE.Vector3(site.x, y, z);
+  }, [site]);
 
   useFrame((state) => {
     const live = useSimStore.getState().rud;
@@ -111,7 +113,9 @@ export function RudAftermath() {
           // Each particle loops its own phase; young = at the emitter.
           const phase = ((t / SMOKE_LIFE_S + ((i * 29) % 97) / 97) % 1 + 1) % 1;
           const a = phase * SMOKE_LIFE_S;
-          const fromBurst = burst && i % 2 === 0;
+          // Both variants smoke from their burning bay; the rest trails
+          // from the core nozzle with the dying gas path.
+          const fromBurst = i % 2 === 0;
           if (fromBurst) {
             // Boiling column off the burst site: outward + buoyant rise.
             smokePos[i * 3] = burstSite.x + (1.2 + 2 * h(i, 1)) * a * 0.4 + a * a * 0.3;
@@ -210,9 +214,9 @@ export function RudAftermath() {
         />
       </points>
 
-      {/* Fuel-fed fire pouring OUT of the torn bay (burst only — the fbo's
-          brief flash is carried by the sparks). */}
-      {tex && rud.variant === 'burst' && (
+      {/* Fire pouring OUT of the torn bay: fuel-fed and sustained on a
+          burst, an oil fire that starves out (or takes the bottle) on fbo. */}
+      {tex && (
         <group ref={fireRef} position={burstSite.toArray()} visible={false}>
           {[0, 1, 2].map((k) => (
             <mesh key={k} rotation={[0, k * 1.05, 0]} userData={{ noShadow: true }}>

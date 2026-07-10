@@ -167,14 +167,15 @@ export function advanceRud(prev: RudState, dt: number): RudState {
 
   let fire: number;
   const tSinceHandle = prev.fireHandlePulled ? prev.tSinceHandle + dt : 0;
-  if (v === 'burst') {
-    if (prev.fireHandlePulled && tSinceHandle > BOTTLE_DELAY_S) {
-      fire = prev.fire * Math.exp(-dt / 2); // bottle + fuel starvation
-    } else {
-      fire = Math.min(1, Math.max(prev.fire, (t - 0.4) / 0.8)); // fuel-fed, sustained
-    }
+  if (prev.fireHandlePulled && tSinceHandle > BOTTLE_DELAY_S) {
+    fire = prev.fire * Math.exp(-dt / 2); // bottle + fuel/hyd shutoff
+  } else if (v === 'burst') {
+    fire = Math.min(1, Math.max(prev.fire, (t - 0.4) / 0.8)); // fuel-fed, sustained
   } else {
-    fire = 0.6 * Math.exp(-t / 0.6); // brief flash at release, self-extinguishing
+    // Contained event, but the fan-case bay still burns oil for a while
+    // (United 328 style): it starves out on its own in ~half a minute —
+    // or the crew kills it sooner with the handle + bottle.
+    fire = 0.55 * Math.min(1, Math.max(0, (t - 0.25) / 0.6)) * Math.exp(-Math.max(0, t - 0.85) / 9);
   }
   if (fire < 0.02) fire = 0;
 
