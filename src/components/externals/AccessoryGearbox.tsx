@@ -198,17 +198,18 @@ export function AccessoryGearbox() {
     cap.rotateX(-otPhi);
     cap.translate(ot.x, 0, 0);
 
-    // Oil supply: ONE yellow line, tank aft end down across the bypass duct
-    // to the lube & scavenge unit pad on the AGB.
+    // Oil supply: ONE yellow line, tank → lube & scavenge pad. The mid-route
+    // (EXTERNALS.oilSupplyRoute) hugs the bypass-duct outer wall around to
+    // 6:00 and crosses the duct down the fan-frame strut with the radial
+    // driveshaft — SecondaryFlows animates its particles along these same
+    // waypoints, so tube and flow never drift apart.
     const lube = PADS[2];
     const oilCurve = new THREE.CatmullRomCurve3([
       pt(ot.x + ot.length / 2 - 0.05, ot.clock, ot.r - 0.02),
-      pt(-2.1, 8.0, 1.25),
-      pt(-1.85, 7.3, 0.85),
-      pt(-1.45, 6.8, 0.72),
+      ...EXTERNALS.oilSupplyRoute.map(([x, clock, r]) => pt(x, clock, r)),
       new THREE.Vector3(lube.x - 0.05, padCenterY(lube.len) + 0.04, lube.z + lube.r + 0.03),
     ]);
-    const oilLine = new THREE.TubeGeometry(oilCurve, 48, 0.024, 8);
+    const oilLine = new THREE.TubeGeometry(oilCurve, 72, 0.024, 8);
 
     return {
       housing: mergeGeometries(housing),

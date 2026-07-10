@@ -91,26 +91,24 @@ export function SecondaryFlows() {
       padCenterY(lube.len) + 0.04,
       lube.z + lube.r + 0.03,
     );
-    // Supply: the EXACT control points of AccessoryGearbox's oil line.
+    // Supply: the EXACT control points of AccessoryGearbox's oil line —
+    // shared via EXTERNALS.oilSupplyRoute (duct wall → down the 6:00 strut).
     const supply = lutOf([
       pt(ot.x + ot.length / 2 - 0.05, ot.clock, ot.r - 0.02),
-      pt(-2.1, 8.0, 1.25),
-      pt(-1.85, 7.3, 0.85),
-      pt(-1.45, 6.8, 0.72),
+      ...EXTERNALS.oilSupplyRoute.map(([x, clock, r]) => pt(x, clock, r)),
       lubeTop,
     ]);
-    // Scavenge return: lube → tank on its own slightly-offset run.
+    // Scavenge return: lube → tank on its own run up the strut's other flank
+    // (EXTERNALS.oilScavengeRoute), then back along the duct wall.
     const scavengePts = [
       new THREE.Vector3(lube.x + 0.08, padCenterY(lube.len) - lube.len / 2 - 0.02, lube.z + 0.06),
-      pt(-1.5, 7.1, 0.8),
-      pt(-1.9, 7.65, 1.0),
-      pt(-2.2, 8.3, 1.38),
+      ...EXTERNALS.oilScavengeRoute.map(([x, clock, r]) => pt(x, clock, r)),
       pt(ot.x - ot.length / 2 + 0.06, ot.clock + 0.15, ot.r - 0.02),
     ];
     const scavenge = lutOf(scavengePts);
     const scavengeTube = new THREE.TubeGeometry(
       new THREE.CatmullRomCurve3(scavengePts),
-      40,
+      64,
       0.016,
       6,
     );

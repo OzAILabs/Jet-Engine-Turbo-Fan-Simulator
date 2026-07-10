@@ -381,6 +381,33 @@ export const EXTERNALS = {
   // r + radius + the filler cap (+0.045) must stay under the cowl skin, which
   // is at 1.845–1.85 over the tank's span — crown 1.785, cap top 1.83.
   oilTank: { x: -2.65, clock: 8.6, r: 1.655, length: 0.55, radius: 0.13 },
+  /**
+   * Oil-line mid-route waypoints [x, clock, r], tank ↔ lube unit. Both runs
+   * hug the bypass-duct outer wall (a hair inside it, like clamped conduit)
+   * around to 6:00, then cross the duct DOWN THE 6:00 FAN-FRAME STRUT
+   * alongside the radial driveshaft (x = -2.0) — never diagonally through
+   * the open bypass air path. Endpoints (tank nozzles, lube pad) are derived
+   * where the tank/pad geometry lives (AccessoryGearbox / SecondaryFlows).
+   */
+  oilSupplyRoute: [
+    [-2.38, 8.2, 1.585],
+    [-2.28, 7.6, 1.575],
+    [-2.18, 7.0, 1.565],
+    [-2.08, 6.45, 1.55],
+    [-2.02, 6.08, 1.44],
+    [-2.0, 6.0, 1.1],
+    [-2.0, 6.0, 0.8],
+    [-1.75, 6.1, 0.72],
+  ],
+  oilScavengeRoute: [
+    [-1.7, 5.9, 0.75],
+    [-1.98, 5.92, 1.05],
+    [-2.03, 5.95, 1.4],
+    [-2.1, 6.4, 1.55],
+    [-2.2, 7.0, 1.545],
+    [-2.3, 7.7, 1.555],
+    [-2.42, 8.35, 1.575],
+  ],
   /** Dual-channel FADEC ECU on the fan case, right side, on vibration isolators. */
   ecu: { x: -2.85, clock: 2.2, r: 1.74, w: 0.55, h: 0.4, d: 0.12 },
   /** Two ignition exciter boxes on the lower-left core near the fan frame. */
