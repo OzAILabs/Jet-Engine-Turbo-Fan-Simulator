@@ -54,14 +54,15 @@ let skinMaps: SkinMaps | null | undefined; // undefined = not tried yet
 const JOINTS_X = [-2.78, -0.55, 1.6, 2.3];
 /** Fan-cowl + reverser halves split at 12 and 6 o'clock across this x span. */
 const SPLIT_SPAN: [number, number] = [-2.78, 1.6];
-/** Latched access doors: [clock hour, x center, axial w, circumferential h]. */
-const DOORS: Array<[number, number, number, number]> = [
-  [4.8, -1.35, 0.46, 0.34], // oil tank access
-  [5.5, -1.95, 0.36, 0.27], // IDG
-  [7.1, -0.95, 0.36, 0.3], // starter
-  [1.8, -2.35, 0.42, 0.33], // EEC
-  [4.6, 0.55, 0.42, 0.32], // pressure relief
-  [7.6, 0.9, 0.3, 0.24], // hydraulics
+/** Latched access doors: [ALF clock hour, x center, axial w, circumf. h].
+ *  Exported so the placard decals (NacelleFurniture) can sit ON the doors. */
+export const DOORS: Array<[number, number, number, number]> = [
+  [7.2, -1.35, 0.46, 0.34], // oil tank access (same +Z flank as the oil tank)
+  [6.5, -1.95, 0.36, 0.27], // IDG
+  [4.9, -0.95, 0.36, 0.3], // starter
+  [10.2, -2.35, 0.42, 0.33], // EEC
+  [7.4, 0.55, 0.42, 0.32], // pressure relief
+  [4.4, 0.9, 0.3, 0.24], // hydraulics
 ];
 /** Cowl latch stations along the 6-o'clock split (recesses painted here;
  *  the 3D handles in NacelleFurniture.tsx sit on top of these). */
@@ -335,7 +336,7 @@ function paintSkin(
   {
     const x = -3.28;
     const r = skin.outerRadiusAt(x);
-    const cx = pxU(skin.uOfClock(4.0));
+    const cx = pxU(skin.uOfClock(8.0));
     const cy = pxV(skin.vOfOuterX(x));
     const rx = (0.09 * mpu(r)) / 2; // circ
     const ry = (0.15 * MPV) / 2; // axial
@@ -362,7 +363,8 @@ function paintSkin(
 
   // ---- markings ------------------------------------------------------------
   // "GE90-115B" on both sides of the fan cowl, mirrored to read nose→tail.
-  const engraveType = (hour: number, side: 'right' | 'left') => {
+  // ALF hours 6..12 face +Z (canvas-up = aft there), hours 0..6 face −Z.
+  const engraveType = (hour: number) => {
     const x = -1.62;
     const r = skin.outerRadiusAt(x);
     const cx = pxU(skin.uOfClock(hour));
@@ -370,7 +372,7 @@ function paintSkin(
     const fontPx = 0.3 * mpu(r);
     c.save();
     c.translate(cx, cy);
-    c.rotate(side === 'right' ? -Math.PI / 2 : Math.PI / 2);
+    c.rotate(hour > 6 ? -Math.PI / 2 : Math.PI / 2);
     c.scale(MPV / mpu(r), 1); // advance in true meters along the axis
     c.font = `600 ${fontPx}px Arial, sans-serif`;
     c.textAlign = 'center';
@@ -379,21 +381,21 @@ function paintSkin(
     c.fillText('GE90-115B', 0, 0);
     c.restore();
   };
-  engraveType(2.2, 'right');
-  engraveType(9.8, 'left');
+  engraveType(9.8);
+  engraveType(2.2);
   // Navy accent rings on the inlet barrel.
   ring(c, pxV(skin.vOfOuterX(-3.0)), 0.036 * MPV, '#24334f');
   ring(c, pxV(skin.vOfOuterX(-2.93)), 0.014 * MPV, '#24334f');
   // Mini service placards (red-bordered, believable at distance).
   const placards: Array<[number, number]> = [
-    [4.8, -1.05],
-    [5.5, -2.2],
-    [7.1, -0.68],
-    [1.8, -2.06],
-    [4.4, -2.95],
-    [7.9, -2.95],
-    [5.0, 0.15],
-    [10.6, -1.3],
+    [7.2, -1.05],
+    [6.5, -2.2],
+    [4.9, -0.68],
+    [10.2, -2.06],
+    [7.6, -2.95],
+    [4.1, -2.95],
+    [7.0, 0.15],
+    [1.4, -1.3],
   ];
   for (const [hour, x] of placards) {
     const r = skin.outerRadiusAt(x);

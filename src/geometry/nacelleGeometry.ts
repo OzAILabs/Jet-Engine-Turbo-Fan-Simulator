@@ -144,10 +144,12 @@ export const nacelleSkin = {
   /** Inner-barrel radius at axial x. */
   innerRadiusAt: (x: number) => rOnBranch(x, 0, NOSE_INDEX),
   /**
-   * u of a clock position (viewed from the front, 12 = up). The lathe puts
-   * u = 0 at 3 o'clock and sweeps through 6 (u=0.25), 9 (0.5), 12 (0.75).
+   * u of an ALF clock position (project convention, clockToYZ: y = r·cosφ,
+   * z = −r·sinφ). The lathe puts u = 0 at 9 o'clock and sweeps DOWN the
+   * ALF dial: 6 o'clock at u = 0.25, 3 at 0.5, 12 at 0.75 — equivalent to
+   * clockToTheta(hour) / 2π.
    */
-  uOfClock: (hour: number) => ((((hour - 3) / 12) % 1) + 1) % 1,
+  uOfClock: (hour: number) => (((0.75 - hour / 12) % 1) + 1) % 1,
 } as const;
 
 /**
