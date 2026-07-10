@@ -28,6 +28,14 @@ import {
   type StartControls,
   type StartSequenceState,
 } from '../sim/startSequence';
+import {
+  advanceRud,
+  createRudState,
+  pullRudFireHandle,
+  RUD_FLAMEOUT_T,
+  type RudState,
+  type RudVariant,
+} from '../sim/rudEvent';
 import { defaultEngineConfig } from '../data/defaultEngineConfig';
 import type { EngineConfig, EngineInputs, EngineState, SpoolState, StationId } from '../sim/types';
 import { clamp } from '../sim/units';
@@ -177,6 +185,10 @@ export interface SimStore {
   /** Seconds since a bird strike (null = none): thrust ripple + EGT spike +
    *  vibration caution, decaying over ~30 s as the debris clears. */
   birdStrikeT: number | null;
+  /** Catastrophic failure (fan blade off / uncontained disk burst) — null
+   *  while the engine is intact. While set, the event OWNS the spools and
+   *  gauges; only the scenario resets clear it (no in-flight repair). */
+  rud: RudState | null;
   /** Service age 0–1: blade erosion + deposits. An old engine makes the same
    *  thrust HOTTER — this eats the EGT margin exactly like real time-on-wing. */
   deterioration: number;
@@ -248,6 +260,11 @@ export interface SimStore {
   setVbvFailClosed: (on: boolean) => void;
   /** Inject a bird strike NOW (running engine only; self-clears in ~30 s). */
   triggerBirdStrike: () => void;
+  /** Release a fan blade ('fbo') or burst a rotor disk ('burst') NOW —
+   *  running engine only; permanent until a scenario reset. */
+  triggerRud: (variant: RudVariant) => void;
+  /** Pull the ENG FIRE handle: fuel + hydraulics shut off, bottle armed. */
+  pullFireHandle: () => void;
   setDeterioration: (frac: number) => void;
 
   tick: (dt: number) => void;
@@ -337,6 +354,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
   surgeActive: false,
   surgeT: 0,
   birdStrikeT: null,
+  rud: null,
   deterioration: 0,
   instruments: buildInstruments(config, initialSpool, initialEngine, initialSeq),
   actuation: computeActuation(initialSpool.n2),
@@ -401,6 +419,24 @@ export const useSimStore = create<SimStore>((set, get) => ({
   setVbvFailClosed: (on) => set({ vbvFailClosed: on, surgeActive: false, surgeT: 0 }),
   triggerBirdStrike: () =>
     set((s) => (s.startSeq.runState === 'running' ? { birdStrikeT: 0 } : {})),
+  triggerRud: (variant) =>
+    set((s) =>
+      s.startSeq.runState === 'running' && !s.rud
+        ? {
+            rud: createRudState(
+              variant,
+              s.spool,
+              s.engine.egtC,
+              // Same oil-pressure law the running branch feeds the gauges.
+              10 + 120 * Math.pow(s.spool.n2, 1.3),
+              s.inputs.mach,
+              s.engine.netThrust,
+            ),
+          }
+        : {},
+    ),
+  pullFireHandle: () =>
+    set((s) => (s.rud ? { rud: pullRudFireHandle(s.rud), fuelControl: 'CUTOFF' } : {})),
   setDeterioration: (frac) => set({ deterioration: clamp(frac, 0, 1) }),
 
   tick: (dt) => {
@@ -415,6 +451,103 @@ export const useSimStore = create<SimStore>((set, get) => ({
       state.apuBleedPsi + (bleedTarget - state.apuBleedPsi) * (1 - Math.exp(-dtClamped / 4));
 
     let seq = state.startSeq;
+
+    // --- Catastrophic failure: the RUD event owns the engine entirely. -----
+    // Runs BEFORE the fuel-chop handoff (pulling the fire handle sets CUTOFF,
+    // but a destroyed engine never returns to the start sequence) and before
+    // both regimes — normal spool dynamics are meaningless mid-event.
+    if (state.rud) {
+      const rud = advanceRud(state.rud, dtClamped);
+      const lpOmega = rud.n1 * cfg.n1RatedRpm * ((Math.PI * 2) / 60);
+      const hpOmega = rud.n2 * cfg.n2RatedRpm * ((Math.PI * 2) / 60);
+      const nextSpool: SpoolState = {
+        ...state.spool,
+        n1: rud.n1,
+        n2: rud.n2,
+        lpAngle: state.spool.lpAngle + lpOmega * dtClamped,
+        hpAngle: state.spool.hpAngle + hpOmega * dtClamped,
+      };
+      // Thermodynamic backdrop of a dead, windmilling engine (throttle to
+      // idle); every gauge the event owns is overridden below.
+      const base = computeEngineState({ ...state.inputs, throttle: 0 }, cfg, nextSpool);
+      const flamedOut = rud.t >= RUD_FLAMEOUT_T[rud.variant];
+      const engineOut: EngineState = {
+        ...base,
+        netThrust: rud.thrustAtRelease * rud.thrustFactor,
+        coreThrust: 0,
+        egtC: rud.egtC,
+        fuelFlow: flamedOut || rud.fireHandlePulled ? 0 : base.fuelFlow,
+        warnings: [
+          {
+            id: 'eng-fail',
+            severity: 'critical',
+            message:
+              rud.variant === 'fbo'
+                ? 'ENG FAIL — fan blade released; containment held'
+                : 'ENG FAIL — uncontained rotor failure',
+          },
+          ...(rud.fire > 0.1
+            ? [
+                {
+                  id: 'eng-fire',
+                  severity: 'critical' as const,
+                  message: 'ENG FIRE — pull the fire handle',
+                },
+              ]
+            : []),
+          ...(rud.oilPsi < 13
+            ? [
+                {
+                  id: 'oil-press',
+                  severity: 'caution' as const,
+                  message: 'ENG OIL PRESS — oil system lost',
+                },
+              ]
+            : []),
+          ...(rud.vibe > 0.15
+            ? [
+                {
+                  id: 'eng-vibration',
+                  severity: 'caution' as const,
+                  message: 'ENG VIBRATION — severe rotor imbalance',
+                },
+              ]
+            : []),
+        ],
+      };
+      // Reuse the surge machine for the cascade bangs (audio/flash/EICAS all
+      // already listen to it); each forced pop decays like a natural one.
+      let surgeActive = state.surgeActive;
+      let surgeT = state.surgeT + dtClamped;
+      if (rud.surgePop) {
+        surgeActive = true;
+        surgeT = 0;
+      } else if (surgeActive && surgeT > 1.2) {
+        surgeActive = false;
+      }
+      const syncedSeq: StartSequenceState = {
+        ...seq,
+        egtC: engineOut.egtC,
+        fuelFlow: engineOut.fuelFlow,
+        oilPressurePsi: rud.oilPsi,
+      };
+      set({
+        rud,
+        spool: nextSpool,
+        engine: engineOut,
+        surgeMargin: 0,
+        surgeActive,
+        surgeT,
+        birdStrikeT: null,
+        transientActive: false,
+        apuBleedPsi,
+        startSeq: syncedSeq,
+        autoStartActive: false,
+        instruments: buildInstruments(cfg, nextSpool, engineOut, syncedSeq),
+        actuation: computeActuation(rud.n2),
+      });
+      return;
+    }
 
     // A fuel chop while running hands the spools back to the sequence.
     if (seq.runState === 'running' && state.fuelControl === 'CUTOFF') {
@@ -784,6 +917,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
       surgeActive: false,
       surgeT: 0,
       birdStrikeT: null,
+      rud: null,
       transientActive: false,
       startSeq,
       fuelControl: 'RUN',
@@ -806,6 +940,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
       surgeActive: false,
       surgeT: 0,
       birdStrikeT: null,
+      rud: null,
       transientActive: false,
       startSeq,
       fuelControl: 'RUN',
@@ -829,6 +964,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
       surgeActive: false,
       surgeT: 0,
       birdStrikeT: null,
+      rud: null,
       transientActive: false,
       startSeq,
       fuelControl: 'CUTOFF',
