@@ -22,6 +22,7 @@ import { CUTAWAY } from '../geometry/annularSection';
 import { createPaintedNacelleMaterial } from '../materials/coldSection';
 import { createNacelleSkinMaterial } from '../materials/nacelleSkin';
 import { CutawayEdges } from './CutawayEdges';
+import { NacelleFurniture } from './NacelleFurniture';
 import { useSimStore } from '../store/useSimStore';
 
 export function Nacelle() {
@@ -100,6 +101,10 @@ export function Nacelle() {
 
       {/* Inner bypass-duct wall */}
       <mesh geometry={ductGeo} material={ductMat} />
+
+      {/* Cowl hardware: latch handles, T2 probe, crisp placard decals
+          (hides itself outside full/cutaway). */}
+      <NacelleFurniture />
 
       {/* GE-style blue outline on the cut edges (cutaway mode only). */}
       {viewMode === 'cutaway' && (

@@ -62,7 +62,13 @@ export function EngineModel3D() {
 
   useEffect(() => {
     root.current.traverse((object) => {
-      if (object instanceof THREE.Mesh || object instanceof THREE.InstancedMesh) {
+      // userData.noShadow lets thin surface decor (nacelle placard decals,
+      // latch hardware) opt out of the blanket shadow flags — coplanar decals
+      // casting onto the skin they sit on is pure shadow-acne.
+      if (
+        (object instanceof THREE.Mesh || object instanceof THREE.InstancedMesh) &&
+        !object.userData.noShadow
+      ) {
         object.castShadow = true;
         object.receiveShadow = true;
       }
