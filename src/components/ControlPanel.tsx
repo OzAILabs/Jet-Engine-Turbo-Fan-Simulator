@@ -93,6 +93,15 @@ export function ControlPanel() {
   const deterioration = useSimStore((s) => s.deterioration);
   const setDeterioration = useSimStore((s) => s.setDeterioration);
   const triggerBirdStrike = useSimStore((s) => s.triggerBirdStrike);
+  // Doomsday switch: subscribe to cheap DERIVED booleans only — the rud object
+  // itself changes identity every tick during an event.
+  const triggerRud = useSimStore((s) => s.triggerRud);
+  const pullFireHandle = useSimStore((s) => s.pullFireHandle);
+  const rudActive = useSimStore((s) => s.rud !== null);
+  const rudFire = useSimStore((s) => (s.rud?.fire ?? 0) > 0.1);
+  const rudHandlePulled = useSimStore((s) => s.rud?.fireHandlePulled ?? false);
+  const engineRunning = useSimStore((s) => s.startSeq.runState === 'running');
+  const [rudGuardOpen, setRudGuardOpen] = useState(false);
   const setViewMode = useSimStore((s) => s.setViewMode);
   const toggleLayer = useSimStore((s) => s.toggleLayer);
   const setAllLayers = useSimStore((s) => s.setAllLayers);
@@ -403,6 +412,65 @@ export function ControlPanel() {
             >
               Bird strike
             </button>
+          </div>
+
+          {/* Catastrophic failure: the guarded DOOMSDAY switch. Flip the
+              striped guard, pick your disaster. Permanent until a reset. */}
+          <div className="rud-box">
+            <div className="rud-head">
+              <span className="field-label">Catastrophic failure</span>
+              <button
+                className={`rud-guard${rudGuardOpen ? ' is-open' : ''}`}
+                title={
+                  rudGuardOpen
+                    ? 'Close the guard'
+                    : 'Lift the guard to arm the catastrophic-failure demos'
+                }
+                onClick={() => setRudGuardOpen(!rudGuardOpen)}
+              >
+                {rudGuardOpen ? 'ARMED' : 'GUARDED'}
+              </button>
+            </div>
+            {rudGuardOpen && !rudActive && (
+              <div className="btn-row">
+                <button
+                  className="btn rud-btn"
+                  disabled={!engineRunning}
+                  title="FAR 33.94: release a fan blade at speed. Containment holds; the engine surges, flames out and shakes down to a windmill. Running engine only."
+                  onClick={() => {
+                    triggerRud('fbo');
+                    setRudGuardOpen(false);
+                  }}
+                >
+                  FAN BLADE OFF
+                </button>
+                <button
+                  className="btn rud-btn"
+                  disabled={!engineRunning}
+                  title="Uncontained rotor burst: disk fragments no case can stop, severed fuel lines, sustained fire until you pull the fire handle. Running engine only."
+                  onClick={() => {
+                    triggerRud('burst');
+                    setRudGuardOpen(false);
+                  }}
+                >
+                  DISK BURST
+                </button>
+              </div>
+            )}
+            {rudActive && (
+              <button
+                className={`rud-fire${rudFire ? ' is-alarm' : ''}`}
+                disabled={rudHandlePulled}
+                title="Fire handle: fuel + hydraulics shut off at the spar, fire bottle armed."
+                onClick={() => pullFireHandle()}
+              >
+                {rudHandlePulled
+                  ? 'FIRE HANDLE PULLED'
+                  : rudFire
+                    ? 'ENG FIRE — PULL FIRE HANDLE'
+                    : 'PULL FIRE HANDLE'}
+              </button>
+            )}
           </div>
           <div className="field">
             <div className="field-head">
