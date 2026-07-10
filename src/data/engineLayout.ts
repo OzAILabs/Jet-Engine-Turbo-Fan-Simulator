@@ -378,7 +378,9 @@ export const EXTERNALS = {
   /** Fuel pump + HMU stack on the right (3:00-ish ALF) side of the AGB. */
   fuelPumpHmu: { x: -0.55, clock: 4.5, standoff: 0.2 },
   /** Oil tank on the fan case at 9:00 (hidden by the cutaway wedge — correct). */
-  oilTank: { x: -2.65, clock: 8.6, r: 1.7, length: 0.55, radius: 0.16 },
+  // r + radius + the filler cap (+0.045) must stay under the cowl skin, which
+  // is at 1.845–1.85 over the tank's span — crown 1.785, cap top 1.83.
+  oilTank: { x: -2.65, clock: 8.6, r: 1.655, length: 0.55, radius: 0.13 },
   /** Dual-channel FADEC ECU on the fan case, right side, on vibration isolators. */
   ecu: { x: -2.85, clock: 2.2, r: 1.74, w: 0.55, h: 0.4, d: 0.12 },
   /** Two ignition exciter boxes on the lower-left core near the fan frame. */
