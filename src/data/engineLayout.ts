@@ -406,7 +406,7 @@ export const EXTERNALS = {
     [-2.1, 6.4, 1.55],
     [-2.2, 7.0, 1.545],
     [-2.3, 7.7, 1.555],
-    [-2.42, 8.35, 1.575],
+    [-2.5, 8.5, 1.6],
   ],
   /** Dual-channel FADEC ECU on the fan case, right side, on vibration isolators. */
   ecu: { x: -2.85, clock: 2.2, r: 1.74, w: 0.55, h: 0.4, d: 0.12 },

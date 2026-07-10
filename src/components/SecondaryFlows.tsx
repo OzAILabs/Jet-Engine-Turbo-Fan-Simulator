@@ -26,7 +26,7 @@ import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useSimStore } from '../store/useSimStore';
-import { AXIS, EXTERNALS, TUBE_COLORS, clockToYZ } from '../data/engineLayout';
+import { AXIS, EXTERNALS, TUBE_COLORS, clockToYZ, visibleInCutaway } from '../data/engineLayout';
 import { PADS, padCenterY } from './externals/AccessoryGearbox';
 
 const N_OIL = 46;
@@ -79,7 +79,14 @@ const scratch = new THREE.Vector3();
 export function SecondaryFlows() {
   const show = useSimStore((s) => s.showSecondaryFlows);
   const exploded = useSimStore((s) => s.viewMode === 'exploded');
-  const showOil = useSimStore((s) => s.layers.accessoryDrive);
+  // The oil circuit starts/ends at the tank (clock 8.6) — the cutaway wedge
+  // removes that skin AND hides the tank + supply tube (AccessoryGearbox's
+  // showTank), so the circuit must hide with it or the scavenge return
+  // dead-ends mid-air and pierces the cut-face wall at the wedge boundary.
+  const tankHidden = useSimStore(
+    (s) => s.viewMode === 'cutaway' && !visibleInCutaway(EXTERNALS.oilTank.clock),
+  );
+  const showOil = useSimStore((s) => s.layers.accessoryDrive) && !tankHidden;
   const showAir = useSimStore((s) => s.layers.airBleed);
 
   // --- Paths (anchors straight from engineLayout / the AGB pads) -----------
