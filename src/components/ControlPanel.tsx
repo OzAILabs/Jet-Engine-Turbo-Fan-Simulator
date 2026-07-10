@@ -128,14 +128,14 @@ export function ControlPanel() {
       <div className="panel-title">Controls</div>
 
       {/* --- Presentation mode ------------------------------------------- */}
-      {/* Prominent: hides overlays + floor grid, collapses the side panels
-          to hover-reveal edge tabs, forces the perspective camera and flies
-          to the cinematic hero pose. Individual overlay checkboxes keep
-          their values and come back exactly as left. */}
+      {/* Prominent: hides overlays, collapses the side panels to hover-reveal
+          edge tabs, forces the perspective camera and flies to the cinematic
+          hero pose. Individual overlay checkboxes keep their values and come
+          back exactly as left. */}
       <button
         className={`btn presentation-btn${presentationMode ? ' is-active' : ''}`}
         onClick={() => setPresentationMode(!presentationMode)}
-        title="Clean beauty view: overlays and floor grid off, panels collapse to slim edge tabs (hover to reveal)"
+        title="Clean beauty view: overlays off, panels collapse to slim edge tabs (hover to reveal)"
       >
         {presentationMode ? 'Exit Presentation' : 'Presentation'}
       </button>

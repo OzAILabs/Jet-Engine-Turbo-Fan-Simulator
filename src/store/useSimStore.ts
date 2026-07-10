@@ -219,10 +219,10 @@ export interface SimStore {
   showSecondaryFlows: boolean;
   soundEnabled: boolean;
   soundVolume: number;
-  /** Presentation mode: overlays + floor grid hidden AT THEIR RENDER SITES,
-   *  side panels collapsed to hover-reveal edge tabs (CSS `is-presentation`),
-   *  perspective projection forced. The individual show* overlay booleans are
-   *  deliberately left untouched so the user's choices survive a round trip. */
+  /** Presentation mode: overlays hidden AT THEIR RENDER SITES, side panels
+   *  collapsed to hover-reveal edge tabs (CSS `is-presentation`), perspective
+   *  projection forced. The individual show* overlay booleans are deliberately
+   *  left untouched so the user's choices survive a round trip. */
   presentationMode: boolean;
   /** Projection to restore when presentation mode is toggled back off. */
   presentationReturnCameraMode: CameraMode;

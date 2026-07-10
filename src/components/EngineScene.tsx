@@ -86,18 +86,6 @@ function SectionCut() {
   return null;
 }
 
-/**
- * FloorGrid — the subtle museum "floor" grid. Hidden in presentation mode so
- * beauty shots read as a dark void; self-subscribing so toggling presentation
- * never re-renders the Canvas component itself. The soft shadow-catcher plane
- * (in EngineScene below) always stays.
- */
-function FloorGrid() {
-  const presentationMode = useSimStore((s) => s.presentationMode);
-  if (presentationMode) return null;
-  return <gridHelper args={[60, 60, '#2a3340', '#161c24']} position={[0, -2.4, 0]} />;
-}
-
 export function EngineScene() {
   return (
     <Canvas
@@ -119,9 +107,8 @@ export function EngineScene() {
       <RealisticEnvironment />
       <Lighting />
 
-      {/* Subtle museum "floor" grid well below the engine (hidden while
-          presenting); the soft shadow plane below it always stays. */}
-      <FloorGrid />
+      {/* Soft shadow-catcher plane well below the engine — grounds it without
+          any visible floor (the museum grid was removed). */}
       <mesh position={[0, -2.405, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[60, 60]} />
         <shadowMaterial transparent opacity={0.34} />
