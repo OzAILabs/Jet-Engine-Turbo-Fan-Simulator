@@ -166,6 +166,69 @@ export function createNacelleShell(
 }
 
 /**
+ * Noise-reduction CHEVRONS on the bypass-nozzle trailing edge — the GEnx/787
+ * style sawtooth (the real GE90-115B has a plain lip; this is a deliberate
+ * aesthetic upgrade). A lathe can't vary with theta, so this is a custom band
+ * welded onto the shell's trailing edge: forward edge matches the cowl's
+ * radius and taper exactly, the aft edge is a rounded triangle wave, and the
+ * tips droop into the exhaust stream like the real serrations. UVs continue
+ * the shell's (u = absolute angle, v = last sooty rows of the skin texture),
+ * so the band wears the same paint/soot and ghosts with the same material in
+ * every view mode. Pass the CUTAWAY theta window for the cut shell — the
+ * sawtooth phase is a function of absolute theta, so both variants align.
+ */
+const CHEVRON_COUNT = 16;
+const CHEVRON_LENGTH = 0.34; // axial reach of a tip beyond the trailing edge
+const CHEVRON_DROOP = 0.06; // radial dip of a tip into the exhaust stream
+
+export function createNacelleChevrons(
+  opts: { thetaStart?: number; thetaLength?: number } = {},
+): THREE.BufferGeometry {
+  const { thetaStart = 0, thetaLength = Math.PI * 2 } = opts;
+  const x0 = AXIS.nacelleBack;
+  const r0 = RADII.nacelleOuter * 0.611; // shell trailing-edge radius
+  const slope =
+    (RADII.nacelleOuter * (0.611 - 0.638)) / (AXIS.nacelleBack - AXIS.bypassNozzleExit);
+
+  const segs = Math.max(12, Math.round(224 * (thetaLength / (Math.PI * 2))));
+  const rows = 6;
+  const positions: number[] = [];
+  const uvs: number[] = [];
+  const indices: number[] = [];
+
+  for (let i = 0; i <= segs; i++) {
+    const theta = thetaStart + (i / segs) * thetaLength;
+    // Rounded triangle wave in absolute theta: 1 at a tip center, 0 in a
+    // valley; the small floor keeps valley quads non-degenerate.
+    const s = ((theta * CHEVRON_COUNT) / (Math.PI * 2)) % 1;
+    const w = Math.pow(0.5 - 0.5 * Math.cos(Math.PI * 2 * s), 0.85);
+    const wEff = 0.03 + 0.97 * w;
+    for (let j = 0; j <= rows; j++) {
+      const t = j / rows;
+      const x = x0 + t * CHEVRON_LENGTH * wEff;
+      const r = r0 + (x - x0) * slope - CHEVRON_DROOP * t * t * w;
+      // Lathe vertex convention (annularSection): y = −r·sinθ, z = r·cosθ.
+      positions.push(x, -r * Math.sin(theta), r * Math.cos(theta));
+      uvs.push(theta / (Math.PI * 2), 0.986 + t * 0.012);
+    }
+  }
+  for (let i = 0; i < segs; i++) {
+    for (let j = 0; j < rows; j++) {
+      const a = i * (rows + 1) + j;
+      const b = a + rows + 1;
+      indices.push(a, b, a + 1, b, b + 1, a + 1);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/**
  * Inner wall of the bypass duct (the cowl's inner surface). A simple taper that
  * forms the outer boundary of the bypass flow path.
  */

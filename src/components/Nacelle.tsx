@@ -17,7 +17,11 @@
  */
 import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import { createNacelleShell, createBypassDuctInner } from '../geometry/nacelleGeometry';
+import {
+  createNacelleShell,
+  createNacelleChevrons,
+  createBypassDuctInner,
+} from '../geometry/nacelleGeometry';
 import { CUTAWAY } from '../geometry/annularSection';
 import { createPaintedNacelleMaterial } from '../materials/coldSection';
 import { createNacelleSkinMaterial } from '../materials/nacelleSkin';
@@ -44,6 +48,13 @@ export function Nacelle() {
   const ductFull = useMemo(() => createBypassDuctInner(), []);
   const ductCut = useMemo(
     () => createBypassDuctInner({ thetaStart: CUTAWAY.thetaStart, thetaLength: CUTAWAY.thetaLength }),
+    [],
+  );
+  // Sawtooth chevron band on the bypass-nozzle trailing edge; the sawtooth
+  // phase is a function of absolute theta, so full and cut variants align.
+  const chevFull = useMemo(() => createNacelleChevrons(), []);
+  const chevCut = useMemo(
+    () => createNacelleChevrons({ thetaStart: CUTAWAY.thetaStart, thetaLength: CUTAWAY.thetaLength }),
     [],
   );
 
@@ -98,6 +109,9 @@ export function Nacelle() {
     <group ref={root}>
       {/* Outer cowl shell */}
       <mesh geometry={shellGeo} material={skinMat} />
+
+      {/* Chevron serrations continuing the trailing edge (same skin paint). */}
+      <mesh geometry={viewMode === 'cutaway' ? chevCut : chevFull} material={skinMat} />
 
       {/* Inner bypass-duct wall */}
       <mesh geometry={ductGeo} material={ductMat} />
