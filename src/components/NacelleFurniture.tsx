@@ -154,6 +154,7 @@ function cellRect(design: number): { x0: number; y0: number; w: number; h: numbe
 interface DecalBundle {
   geoFull: THREE.BufferGeometry;
   geoCut: THREE.BufferGeometry;
+  geoDoorsOff: THREE.BufferGeometry;
   material: THREE.MeshStandardMaterial;
 }
 
@@ -205,10 +206,13 @@ function buildDecals(): DecalBundle | null {
     return { plane, theta };
   };
 
-  const all = DECALS.map(makePlane);
+  const all = DECALS.map((d) => ({ ...makePlane(d), x: d[2] }));
   const geoFull = mergeGeometries(all.map((a) => a.plane))!;
   const kept = all.filter((a) => keptTheta(a.theta));
   const geoCut = mergeGeometries(kept.map((a) => a.plane.clone()))!;
+  // Aftermath variant: placards riding the fan-cowl doors leave with them.
+  const onFuselageOnly = all.filter((a) => a.x < -2.78 || a.x > -0.55);
+  const geoDoorsOff = mergeGeometries(onFuselageOnly.map((a) => a.plane.clone()))!;
   all.forEach((a) => a.plane.dispose());
 
   const material = new THREE.MeshStandardMaterial({
@@ -219,11 +223,14 @@ function buildDecals(): DecalBundle | null {
     polygonOffsetFactor: -1,
     polygonOffsetUnits: -1,
   });
-  return { geoFull, geoCut, material };
+  return { geoFull, geoCut, geoDoorsOff, material };
 }
 
 export function NacelleFurniture() {
   const viewMode = useSimStore((s) => s.viewMode);
+  const doorsGone = useSimStore(
+    (s) => s.rud !== null && s.rud.variant === 'fbo' && s.rud.t >= s.rud.doorsDepartT,
+  );
 
   const steelGeo = useMemo(buildSteelGeometry, []);
   const steelMat = useMemo(
@@ -242,7 +249,13 @@ export function NacelleFurniture() {
       {/* Placard decals — in cutaway only those whose skin panel survives. */}
       {decals && (
         <mesh
-          geometry={viewMode === 'cutaway' ? decals.geoCut : decals.geoFull}
+          geometry={
+            viewMode === 'cutaway'
+              ? decals.geoCut
+              : doorsGone
+                ? decals.geoDoorsOff
+                : decals.geoFull
+          }
           material={decals.material}
           castShadow={false}
           userData={{ noShadow: true }}

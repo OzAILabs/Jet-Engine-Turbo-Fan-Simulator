@@ -91,6 +91,45 @@ function remapLatheUVs(geo: THREE.BufferGeometry, thetaStart: number, thetaLengt
   uv.needsUpdate = true;
 }
 
+/**
+ * Same UV remap for a SUB-profile lathe: vByPoint carries each profile
+ * point's arc fraction within the FULL cowl profile, so a piece cut out of
+ * the shell (fan-cowl door, remnant strip) samples exactly the texels the
+ * intact shell showed there. u may exceed 1 for sweeps crossing θ = 2π —
+ * the skin maps use RepeatWrapping, so it lands on the same texels.
+ */
+function remapSubLatheUVs(
+  geo: THREE.BufferGeometry,
+  vByPoint: number[],
+  thetaStart: number,
+  thetaLength: number,
+): void {
+  const uv = geo.getAttribute('uv') as THREE.BufferAttribute;
+  const nSeg = vByPoint.length - 1;
+  for (let k = 0; k < uv.count; k++) {
+    const j = Math.round(uv.getY(k) * nSeg);
+    uv.setY(k, vByPoint[j]);
+    uv.setX(k, (thetaStart + uv.getX(k) * thetaLength) / (Math.PI * 2));
+  }
+  uv.needsUpdate = true;
+}
+
+/** Outer-skin sub-profile x0→x1 (interpolated ends) + per-point arc v. */
+function outerSub(x0: number, x1: number): { pts: Array<[number, number]>; v: number[] } {
+  const last = PROFILE.length - 1;
+  const pts: Array<[number, number]> = [[x0, rOnBranch(x0, last, NOSE_INDEX)]];
+  const v: number[] = [vOnBranch(x0, last, NOSE_INDEX)];
+  for (let j = NOSE_INDEX; j <= last; j++) {
+    if (PROFILE[j][0] > x0 && PROFILE[j][0] < x1) {
+      pts.push(PROFILE[j]);
+      v.push(ARC[j] / TOTAL_ARC);
+    }
+  }
+  pts.push([x1, rOnBranch(x1, last, NOSE_INDEX)]);
+  v.push(vOnBranch(x1, last, NOSE_INDEX));
+  return { pts, v };
+}
+
 /** Interpolate arc-length fraction at axial position x on one profile branch. */
 function vOnBranch(x: number, from: number, to: number): number {
   const step = from < to ? 1 : -1;
@@ -349,4 +388,105 @@ export function createNacelleCloseouts(
   aft.dispose();
   bulkhead.dispose();
   return merged;
+}
+
+/* --------------------------------------------------------------------------
+ * Fan-cowl doors — the panels that DEPART in a severe blade-off event
+ * (SWA 1380-style). The fan cowl spans the two painted circumferential
+ * joints; its left/right halves hinge at 12:00 and latch at 6:00, so when
+ * they tear away, narrow hinge and latch strips stay behind (the 3D latch
+ * handles keep their footing on the bottom strip).
+ * ------------------------------------------------------------------------ */
+export const FAN_COWL = {
+  x0: -2.78, // forward joint (matches the painted seam)
+  x1: -0.55, // aft joint
+  /** Half-widths [rad] of the hinge (12:00) and latch (6:00) remnant strips. */
+  hingeHalf: 0.1,
+  latchHalf: 0.12,
+} as const;
+
+const THETA_TOP = (3 * Math.PI) / 2; // u = 0.75 → ALF 12:00
+const THETA_BOTTOM = Math.PI / 2; // u = 0.25 → ALF 6:00
+
+/**
+ * The cowl shell with BOTH fan-cowl doors gone: forward section (barrel +
+ * lip), aft section (reverser/core cowl), and the hinge + latch remnant
+ * strips across the door bay. Full-view (and transparent) only — the
+ * cutaway keeps its normal cut shell, which is an analysis view.
+ */
+export function createNacelleShellDoorsOff(): THREE.BufferGeometry {
+  const last = PROFILE.length - 1;
+  // Forward piece: every profile point up the barrel/lip/skin to x0.
+  const fwdPts: Array<[number, number]> = [];
+  const fwdV: number[] = [];
+  for (let j = 0; j <= last && (j <= NOSE_INDEX || PROFILE[j][0] < FAN_COWL.x0); j++) {
+    fwdPts.push(PROFILE[j]);
+    fwdV.push(ARC[j] / TOTAL_ARC);
+  }
+  fwdPts.push([FAN_COWL.x0, rOnBranch(FAN_COWL.x0, last, NOSE_INDEX)]);
+  fwdV.push(vOnBranch(FAN_COWL.x0, last, NOSE_INDEX));
+  const aftSub = outerSub(FAN_COWL.x1, AXIS.nacelleBack);
+  const band = outerSub(FAN_COWL.x0, FAN_COWL.x1);
+
+  const parts: THREE.BufferGeometry[] = [];
+  const fwd = createLatheAlongX(fwdPts, { segments: 140 });
+  remapSubLatheUVs(fwd, fwdV, 0, Math.PI * 2);
+  parts.push(fwd);
+  const aft = createLatheAlongX(aftSub.pts, { segments: 140 });
+  remapSubLatheUVs(aft, aftSub.v, 0, Math.PI * 2);
+  parts.push(aft);
+  for (const [center, half] of [
+    [THETA_TOP, FAN_COWL.hingeHalf],
+    [THETA_BOTTOM, FAN_COWL.latchHalf],
+  ]) {
+    const strip = createLatheAlongX(band.pts, {
+      segments: 8,
+      thetaStart: center - half,
+      thetaLength: half * 2,
+    });
+    remapSubLatheUVs(strip, band.v, center - half, half * 2);
+    parts.push(strip);
+  }
+  const merged = mergeGeometries(parts)!;
+  parts.forEach((g) => g.dispose());
+  return merged;
+}
+
+export interface FanCowlDoor {
+  geometry: THREE.BufferGeometry; // centered on its own centroid
+  /** World position of the door's centroid when installed. */
+  center: THREE.Vector3;
+  /** Unit outward radial at the door's mid-arc (its fly-away direction). */
+  outward: THREE.Vector3;
+}
+
+/**
+ * The two fan-cowl door panels as separate geometries (translated to their
+ * own centroids so they can tumble about themselves). They wear the painted
+ * skin material — texts, doors, rivets fly away with them.
+ */
+export function createFanCowlDoors(): [FanCowlDoor, FanCowlDoor] {
+  const band = outerSub(FAN_COWL.x0, FAN_COWL.x1);
+  const midX = (FAN_COWL.x0 + FAN_COWL.x1) / 2;
+  const midR = rOnBranch(midX, PROFILE.length - 1, NOSE_INDEX);
+  const spans: Array<[number, number]> = [
+    // Left door: from the latch strip's edge up the −Z side to the hinge.
+    [THETA_BOTTOM + FAN_COWL.latchHalf, THETA_TOP - FAN_COWL.hingeHalf],
+    // Right door: from the hinge down the +Z side back to the latch (crosses 2π).
+    [THETA_TOP + FAN_COWL.hingeHalf, Math.PI * 2 + THETA_BOTTOM - FAN_COWL.latchHalf],
+  ];
+  return spans.map(([t0, t1]) => {
+    const geo = createLatheAlongX(band.pts, {
+      segments: 70,
+      thetaStart: t0,
+      thetaLength: t1 - t0,
+    });
+    remapSubLatheUVs(geo, band.v, t0, t1 - t0);
+    const mid = (t0 + t1) / 2;
+    // Lathe vertex convention: y = −r·sinθ, z = r·cosθ.
+    const outward = new THREE.Vector3(0, -Math.sin(mid), Math.cos(mid));
+    const center = new THREE.Vector3(midX, outward.y * midR, outward.z * midR);
+    geo.translate(-center.x, -center.y, -center.z);
+    return { geometry: geo, center, outward };
+  }) as [FanCowlDoor, FanCowlDoor];
 }

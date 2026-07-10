@@ -16,6 +16,7 @@
  * the geometry helpers, so we can render the meshes without extra positioning.
  */
 import { useMemo, useRef } from 'react';
+import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import {
   createNacelleShell,
@@ -23,6 +24,8 @@ import {
   createBypassDuctInner,
   createNacelleCutFaces,
   createNacelleCloseouts,
+  createNacelleShellDoorsOff,
+  createFanCowlDoors,
 } from '../geometry/nacelleGeometry';
 import { CUTAWAY } from '../geometry/annularSection';
 import { createPaintedNacelleMaterial } from '../materials/coldSection';
@@ -35,6 +38,11 @@ export function Nacelle() {
   // Only the view mode changes how this shell is drawn, so subscribe to just
   // that slice reactively (cheap, re-renders only when the mode changes).
   const viewMode = useSimStore((s) => s.viewMode);
+  // Severe blade-off aftermath: the fan-cowl doors have DEPARTED. Boolean
+  // flips once per event (rud.t crosses doorsDepartT), not per tick.
+  const doorsGone = useSimStore(
+    (s) => s.rud !== null && s.rud.variant === 'fbo' && s.rud.t >= s.rud.doorsDepartT,
+  );
 
   const root = useRef<THREE.Group>(null!);
 
@@ -71,6 +79,36 @@ export function Nacelle() {
     () => createNacelleCutFaces(CUTAWAY.thetaStart, CUTAWAY.thetaLength),
     [],
   );
+  // Aftermath geometry, built lazily the first time doors depart: the shell
+  // with the door bay open (hinge/latch strips remain) + the two tumbling
+  // door panels, still wearing the painted skin.
+  const shellDoorsOff = useMemo(() => (doorsGone ? createNacelleShellDoorsOff() : null), [doorsGone]);
+  const doors = useMemo(() => (doorsGone ? createFanCowlDoors() : null), [doorsGone]);
+  const doorRefs = [useRef<THREE.Group>(null), useRef<THREE.Group>(null)];
+  useFrame(() => {
+    if (!doors) return;
+    const rud = useSimStore.getState().rud;
+    if (!rud) return;
+    const t = Math.max(0, rud.t - rud.doorsDepartT);
+    doorRefs.forEach((ref, i) => {
+      const g = ref.current;
+      if (!g) return;
+      if (t > 6) {
+        g.visible = false;
+        return;
+      }
+      const d = doors[i];
+      const sign = i === 0 ? 1 : -1;
+      // Blown outward + swept aft, falling away; each door tumbles its own way.
+      g.visible = true;
+      g.position.set(
+        d.center.x + 5 * t + 1.5 * t * t,
+        d.center.y + d.outward.y * (1.5 * t + 2.5 * t * t) - 2.2 * t * t,
+        d.center.z + d.outward.z * (1.5 * t + 2.5 * t * t),
+      );
+      g.rotation.set(sign * 4.2 * t, sign * 1.1 * t, -2.4 * t);
+    });
+  });
   // Cut faces read as sectioned structure: flat, non-shiny, slightly darker
   // than the paint (museum-cutaway style). Only shown in cutaway (opaque),
   // so it never needs the transparency mutations the skin/duct get.
@@ -134,8 +172,24 @@ export function Nacelle() {
 
   return (
     <group ref={root}>
-      {/* Outer cowl shell */}
-      <mesh geometry={shellGeo} material={skinMat} />
+      {/* Outer cowl shell. After a severe blade-off the fan-cowl doors are
+          GONE: the full/transparent shells swap to the open-bay variant (the
+          cutaway keeps its normal cut shell — it is an analysis view). */}
+      <mesh
+        geometry={doorsGone && viewMode !== 'cutaway' && shellDoorsOff ? shellDoorsOff : shellGeo}
+        material={skinMat}
+      />
+
+      {/* The departed doors, tumbling away downwind (fbo aftermath). */}
+      {doors && viewMode !== 'cutaway' && (
+        <>
+          {doors.map((d, i) => (
+            <group key={i} ref={doorRefs[i]} position={d.center.toArray()}>
+              <mesh geometry={d.geometry} material={skinMat} />
+            </group>
+          ))}
+        </>
+      )}
 
       {/* Chevron serrations continuing the trailing edge (same skin paint). */}
       <mesh geometry={viewMode === 'cutaway' ? chevCut : chevFull} material={skinMat} />
