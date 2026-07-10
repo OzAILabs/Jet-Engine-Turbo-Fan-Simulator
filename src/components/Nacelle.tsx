@@ -20,6 +20,7 @@ import * as THREE from 'three';
 import { createNacelleShell, createBypassDuctInner } from '../geometry/nacelleGeometry';
 import { CUTAWAY } from '../geometry/annularSection';
 import { createPaintedNacelleMaterial } from '../materials/coldSection';
+import { createNacelleSkinMaterial } from '../materials/nacelleSkin';
 import { CutawayEdges } from './CutawayEdges';
 import { useSimStore } from '../store/useSimStore';
 
@@ -45,46 +46,47 @@ export function Nacelle() {
     [],
   );
 
-  // --- Material (created once, tweaked per view mode) ----------------------
-  // Painted-cowl PBR material (procedural mottled roughnessMap — see
-  // src/materials/coldSection.ts). Still ONE shared MeshStandardMaterial: the
-  // view-mode switch below keeps mutating transparent/opacity/depthWrite/side
-  // on it exactly as before.
-  const material = useMemo(() => createPaintedNacelleMaterial(), []);
+  // --- Materials (created once, tweaked per view mode) ---------------------
+  // The outer cowl wears the full painted SKIN (panel seams, rivets, access
+  // doors, markings, bare-metal lip, grime — see materials/nacelleSkin.ts);
+  // the bypass-duct inner wall keeps the plain mottled paint so cowl markings
+  // don't smear across it. Both stay single shared MeshStandardMaterials: the
+  // view-mode switch below mutates transparency flags on BOTH in lockstep.
+  const skinMat = useMemo(() => createNacelleSkinMaterial(), []);
+  const ductMat = useMemo(() => createPaintedNacelleMaterial(), []);
   // Decide which geometry and material settings to use for the current mode.
-  // We mutate the shared material's transparency flags directly inside this
+  // We mutate the shared materials' transparency flags directly inside this
   // memo so they stay in sync with viewMode without creating new materials.
   const { shellGeo, ductGeo } = useMemo(() => {
+    const apply = (transparent: boolean, opacity: number) => {
+      for (const material of [skinMat, ductMat]) {
+        material.transparent = transparent;
+        material.opacity = opacity;
+        material.depthWrite = !transparent;
+        material.side = THREE.DoubleSide;
+      }
+    };
     switch (viewMode) {
       case 'transparent':
-        // Very faint: the cowl (DoubleSide) and the bypass-duct inner wall both
-        // use this material, and they stack with the core casing — so keep each
-        // layer low or they composite into a milky, near-opaque shell.
-        material.transparent = true;
-        material.opacity = 0.07;
-        material.depthWrite = false;
-        material.side = THREE.DoubleSide;
+        // Very faint: the cowl (DoubleSide) and the bypass-duct inner wall
+        // stack with the core casing — so keep each layer low or they
+        // composite into a milky, near-opaque shell.
+        apply(true, 0.07);
         return { shellGeo: shellFull, ductGeo: ductFull };
 
       case 'cutaway':
         // The remaining cowl is solid metal; only the removed wedge exposes
         // the internals. Show both faces so the cut edge/interior wall reads.
-        material.transparent = false;
-        material.opacity = 1;
-        material.depthWrite = true;
-        material.side = THREE.DoubleSide;
+        apply(false, 1);
         return { shellGeo: shellCut, ductGeo: ductCut };
 
       case 'full':
       default:
         // Solid opaque metal.
-        material.transparent = false;
-        material.opacity = 1;
-        material.depthWrite = true;
-        material.side = THREE.DoubleSide;
+        apply(false, 1);
         return { shellGeo: shellFull, ductGeo: ductFull };
     }
-  }, [viewMode, material, shellFull, shellCut, ductFull, ductCut]);
+  }, [viewMode, skinMat, ductMat, shellFull, shellCut, ductFull, ductCut]);
 
   // In exploded view the cowl is hidden entirely so the separated internal
   // modules are fully visible (and there is no faint floating shell). Same in
@@ -94,10 +96,10 @@ export function Nacelle() {
   return (
     <group ref={root}>
       {/* Outer cowl shell */}
-      <mesh geometry={shellGeo} material={material} />
+      <mesh geometry={shellGeo} material={skinMat} />
 
       {/* Inner bypass-duct wall */}
-      <mesh geometry={ductGeo} material={material} />
+      <mesh geometry={ductGeo} material={ductMat} />
 
       {/* GE-style blue outline on the cut edges (cutaway mode only). */}
       {viewMode === 'cutaway' && (

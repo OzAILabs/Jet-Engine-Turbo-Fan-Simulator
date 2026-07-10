@@ -34,7 +34,7 @@ import * as THREE from 'three';
 const SIZE = 256;
 
 /** Deterministic PRNG (Park–Miller) so every load paints identical textures. */
-function makeRand(seed: number): () => number {
+export function makeRand(seed: number): () => number {
   let s = seed % 2147483647;
   if (s <= 0) s += 2147483646;
   return () => {
@@ -43,22 +43,22 @@ function makeRand(seed: number): () => number {
   };
 }
 
-interface PaintSurface {
+export interface PaintSurface {
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
 }
 
 /** Offscreen canvas + 2D context, or null when headless (tests / SSR). */
-function tryMakeCanvas(): PaintSurface | null {
+export function tryMakeCanvas(size = SIZE): PaintSurface | null {
   if (typeof document === 'undefined') return null;
   const canvas = document.createElement('canvas');
-  canvas.width = SIZE;
-  canvas.height = SIZE;
+  canvas.width = size;
+  canvas.height = size;
   const ctx = canvas.getContext('2d');
   return ctx ? { canvas, ctx } : null;
 }
 
-function toTexture(
+export function toTexture(
   canvas: HTMLCanvasElement,
   opts: { srgb?: boolean; wrap?: THREE.Wrapping; repeat?: [number, number] } = {},
 ): THREE.CanvasTexture {
