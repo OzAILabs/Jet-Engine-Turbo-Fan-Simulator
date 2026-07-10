@@ -14,6 +14,7 @@
  * furniture (latches, placards) both build on it.
  */
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { AXIS, RADII } from '../data/engineLayout';
 import { createLatheAlongX } from './annularSection';
 
@@ -229,24 +230,80 @@ export function createNacelleChevrons(
 }
 
 /**
- * Inner wall of the bypass duct (the cowl's inner surface). A simple taper that
- * forms the outer boundary of the bypass flow path.
+ * Inner wall of the bypass duct (the cowl's inner surface) = outer boundary of
+ * the bypass flow path. It tapers steadily (tracking the outer skin) to the
+ * bypass-nozzle exit, leaving a LARGE annular gap to the core cowl through
+ * which the bypass air leaves — not a tight little hole. Shared with the
+ * solid-wall cut faces below, which treat the space between this and the
+ * outer shell as the cowl's structural thickness.
  */
+const DUCT_PROFILE: Array<[number, number]> = [
+  [AXIS.fanPlane + 0.1, RADII.nacelleInner * 0.99],
+  [0.0, 1.5],
+  [1.0, 1.32],
+  [1.8, 1.18],
+  [2.2, 1.1],
+  [AXIS.bypassNozzleExit, 1.02], // bypass nozzle exit (wide annulus around the core)
+];
+
 export function createBypassDuctInner(
   opts: { thetaStart?: number; thetaLength?: number } = {},
 ): THREE.BufferGeometry {
-  const { fanPlane, bypassNozzleExit } = AXIS;
-  // Inner wall of the cowl = outer boundary of the bypass flow path. It tapers
-  // steadily (tracking the outer skin) to the bypass-nozzle exit, leaving a
-  // LARGE annular gap to the core cowl through which the bypass air leaves —
-  // not a tight little hole.
-  const profile: Array<[number, number]> = [
-    [fanPlane + 0.1, RADII.nacelleInner * 0.99],
-    [0.0, 1.5],
-    [1.0, 1.32],
-    [1.8, 1.18],
-    [2.2, 1.1],
-    [bypassNozzleExit, 1.02], // bypass nozzle exit (wide annulus around the core)
+  return createLatheAlongX(DUCT_PROFILE, { segments: 110, ...opts });
+}
+
+/**
+ * The cowl's CUT FACES for the museum cutaway: flat cross-sections filling
+ * the space between the outer shell profile and the bypass-duct inner wall at
+ * both ends of the removed wedge. Without these the cowl reads as two
+ * infinitely thin sheets with a hollow void between; with them the cut shows
+ * a solid D-duct inlet and a thick tapering sandwich wall, like a real
+ * sectioned nacelle. Returns BOTH faces merged (one mesh, DoubleSide it).
+ */
+export function createNacelleCutFaces(thetaStart: number, thetaLength: number): THREE.BufferGeometry {
+  // Boundary: full shell profile (inner barrel → lip → outer skin → trailing
+  // edge), across the trailing closeout to the duct exit, back along the duct
+  // wall, then the forward closeout returns to the inner barrel edge.
+  const outline = [
+    ...PROFILE.map(([x, r]) => new THREE.Vector2(x, r)),
+    ...[...DUCT_PROFILE].reverse().map(([x, r]) => new THREE.Vector2(x, r)),
   ];
-  return createLatheAlongX(profile, { segments: 110, ...opts });
+  const shape = new THREE.Shape(outline);
+  const faces = [thetaStart, thetaStart + thetaLength].map((theta) => {
+    const geo = new THREE.ShapeGeometry(shape, 24);
+    // Shape space (x, r) → the half-plane at constant theta: X stays axial,
+    // shape-Y maps onto the radial ray (lathe convention y=−r·sinθ, z=r·cosθ).
+    geo.applyMatrix4(
+      new THREE.Matrix4().makeBasis(
+        new THREE.Vector3(1, 0, 0),
+        new THREE.Vector3(0, -Math.sin(theta), Math.cos(theta)),
+        new THREE.Vector3(0, -Math.cos(theta), -Math.sin(theta)),
+      ),
+    );
+    return geo;
+  });
+  const merged = mergeGeometries(faces)!;
+  faces.forEach((g) => g.dispose());
+  return merged;
+}
+
+/**
+ * Closeout rings sealing the cowl cavity in EVERY view mode: an angled ring
+ * joining the outer-skin trailing edge to the bypass-duct exit lip, and a
+ * short ring bridging the inner-barrel aft edge to the duct's forward edge
+ * (just above the fan tips). With the cut faces these make the cowl a closed
+ * solid instead of an open-ended pair of sheets.
+ */
+export function createNacelleCloseouts(
+  opts: { thetaStart?: number; thetaLength?: number } = {},
+): THREE.BufferGeometry {
+  const aft = createLatheAlongX(
+    [PROFILE[PROFILE.length - 1], DUCT_PROFILE[DUCT_PROFILE.length - 1]],
+    { segments: 110, ...opts },
+  );
+  const fwd = createLatheAlongX([PROFILE[0], DUCT_PROFILE[0]], { segments: 110, ...opts });
+  const merged = mergeGeometries([aft, fwd])!;
+  aft.dispose();
+  fwd.dispose();
+  return merged;
 }

@@ -21,6 +21,8 @@ import {
   createNacelleShell,
   createNacelleChevrons,
   createBypassDuctInner,
+  createNacelleCutFaces,
+  createNacelleCloseouts,
 } from '../geometry/nacelleGeometry';
 import { CUTAWAY } from '../geometry/annularSection';
 import { createPaintedNacelleMaterial } from '../materials/coldSection';
@@ -55,6 +57,31 @@ export function Nacelle() {
   const chevFull = useMemo(() => createNacelleChevrons(), []);
   const chevCut = useMemo(
     () => createNacelleChevrons({ thetaStart: CUTAWAY.thetaStart, thetaLength: CUTAWAY.thetaLength }),
+    [],
+  );
+  // Solid-wall pieces: closeout rings seal the shell↔duct cavity at both
+  // ends in every mode; flat cut faces fill the wall cross-section at the
+  // cutaway planes so the cowl reads THICK, not as two paper sheets.
+  const closeoutFull = useMemo(() => createNacelleCloseouts(), []);
+  const closeoutCut = useMemo(
+    () => createNacelleCloseouts({ thetaStart: CUTAWAY.thetaStart, thetaLength: CUTAWAY.thetaLength }),
+    [],
+  );
+  const cutFaces = useMemo(
+    () => createNacelleCutFaces(CUTAWAY.thetaStart, CUTAWAY.thetaLength),
+    [],
+  );
+  // Cut faces read as sectioned structure: flat, non-shiny, slightly darker
+  // than the paint (museum-cutaway style). Only shown in cutaway (opaque),
+  // so it never needs the transparency mutations the skin/duct get.
+  const cutFaceMat = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: '#9ba2a9',
+        metalness: 0.3,
+        roughness: 0.6,
+        side: THREE.DoubleSide,
+      }),
     [],
   );
 
@@ -115,6 +142,16 @@ export function Nacelle() {
 
       {/* Inner bypass-duct wall */}
       <mesh geometry={ductGeo} material={ductMat} />
+
+      {/* Closeout rings sealing the shell↔duct cavity fore and aft. */}
+      <mesh
+        geometry={viewMode === 'cutaway' ? closeoutCut : closeoutFull}
+        material={ductMat}
+      />
+
+      {/* Solid cut faces at the wedge planes (cutaway only): the wall's
+          cross-section, so the cowl reads thick where it is sectioned. */}
+      {viewMode === 'cutaway' && <mesh geometry={cutFaces} material={cutFaceMat} />}
 
       {/* Cowl hardware: latch handles, T2 probe, crisp placard decals
           (hides itself outside full/cutaway). */}
