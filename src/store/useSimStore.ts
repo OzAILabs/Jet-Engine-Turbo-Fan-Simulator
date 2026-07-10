@@ -360,7 +360,9 @@ export const useSimStore = create<SimStore>((set, get) => ({
   showFlowParticles: true,
   showTempColors: true,
   showVelocityVectors: false,
-  showSecondaryFlows: false,
+  // On by default: the oil circuit / VBV dump / cooling-air runs are the
+  // teaching payoff of the externals layer (owner request 2026-07).
+  showSecondaryFlows: true,
   // Sound defaults ON; the actual AudioContext can only start after the first
   // user gesture (browser autoplay policy), which EngineAudio arms on mount.
   soundEnabled: true,
