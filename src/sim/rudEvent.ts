@@ -103,7 +103,7 @@ export function createRudState(
     t: 0,
     phase: 'release',
     bladeIndex: 7, // fixed: reproducible captures & tests
-    impactClock: 4.3, // lower-right (+Z) — visible from the default camera
+    impactClock: 7.7, // low on the +Z flank (ALF z = −sin: hours 6–12 face +Z)
     vibe: 1,
     fire: 0,
     smoke: 0,

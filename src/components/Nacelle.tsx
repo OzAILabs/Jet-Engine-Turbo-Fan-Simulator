@@ -26,7 +26,13 @@ import {
   createNacelleCloseouts,
   createNacelleShellDoorsOff,
   createFanCowlDoors,
+  createNacelleShellBurstHole,
+  createBurstFragments,
+  createBayLiner,
+  FAN_COWL,
+  BURST_BAY,
 } from '../geometry/nacelleGeometry';
+import { clockToTheta } from '../data/engineLayout';
 import { CUTAWAY } from '../geometry/annularSection';
 import { createPaintedNacelleMaterial } from '../materials/coldSection';
 import { createNacelleSkinMaterial } from '../materials/nacelleSkin';
@@ -38,11 +44,18 @@ export function Nacelle() {
   // Only the view mode changes how this shell is drawn, so subscribe to just
   // that slice reactively (cheap, re-renders only when the mode changes).
   const viewMode = useSimStore((s) => s.viewMode);
-  // Severe blade-off aftermath: the fan-cowl doors have DEPARTED. Boolean
-  // flips once per event (rud.t crosses doorsDepartT), not per tick.
-  const doorsGone = useSimStore(
-    (s) => s.rud !== null && s.rud.variant === 'fbo' && s.rud.t >= s.rud.doorsDepartT,
+  // Catastrophic-failure aftermath: 'doors' = the fan-cowl doors have
+  // DEPARTED (fbo); 'hole' = disk fragments tore the aft cowl open (burst).
+  // The string flips once per event (rud.t crosses doorsDepartT), not per tick.
+  const aftermath = useSimStore((s) =>
+    s.rud !== null && s.rud.t >= s.rud.doorsDepartT
+      ? s.rud.variant === 'fbo'
+        ? 'doors'
+        : 'hole'
+      : 'none',
   );
+  const doorsGone = aftermath === 'doors';
+  const holeOpen = aftermath === 'hole';
 
   const root = useRef<THREE.Group>(null!);
 
@@ -79,34 +92,97 @@ export function Nacelle() {
     () => createNacelleCutFaces(CUTAWAY.thetaStart, CUTAWAY.thetaLength),
     [],
   );
-  // Aftermath geometry, built lazily the first time doors depart: the shell
-  // with the door bay open (hinge/latch strips remain) + the two tumbling
-  // door panels, still wearing the painted skin.
-  const shellDoorsOff = useMemo(() => (doorsGone ? createNacelleShellDoorsOff() : null), [doorsGone]);
-  const doors = useMemo(() => (doorsGone ? createFanCowlDoors() : null), [doorsGone]);
-  const doorRefs = [useRef<THREE.Group>(null), useRef<THREE.Group>(null)];
+  // Aftermath geometry, built lazily the first time skin departs: either the
+  // door-bay-open shell + two door panels (fbo) or the burst-hole shell + two
+  // torn fragments (burst) — all still wearing the painted skin.
+  const damagedShell = useMemo(
+    () =>
+      doorsGone ? createNacelleShellDoorsOff() : holeOpen ? createNacelleShellBurstHole() : null,
+    [doorsGone, holeOpen],
+  );
+  const flying = useMemo(
+    () => (doorsGone ? createFanCowlDoors() : holeOpen ? createBurstFragments() : null),
+    [doorsGone, holeOpen],
+  );
+  // Charred liner behind the opening so the wound reads BLACK, not the
+  // light duct wall tone-on-tone behind a light skin.
+  const bayLiner = useMemo(
+    () =>
+      doorsGone
+        ? createBayLiner(FAN_COWL.x0, FAN_COWL.x1)
+        : holeOpen
+          ? createBayLiner(BURST_BAY.x0 - 0.08, BURST_BAY.x1 + 0.08, {
+              thetaStart: clockToTheta(BURST_BAY.clock) - BURST_BAY.half - 0.12,
+              thetaLength: 2 * (BURST_BAY.half + 0.12),
+            })
+          : null,
+    [doorsGone, holeOpen],
+  );
+  const bayMat = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: '#141518',
+        metalness: 0.25,
+        roughness: 0.95,
+        side: THREE.DoubleSide,
+      }),
+    [],
+  );
+  const flyRefs = [useRef<THREE.Group>(null), useRef<THREE.Group>(null)];
+  const scratch = useMemo(() => new THREE.Vector3(), []);
   useFrame(() => {
-    if (!doors) return;
+    if (!flying) return;
     const rud = useSimStore.getState().rud;
     if (!rud) return;
     const t = Math.max(0, rud.t - rud.doorsDepartT);
-    doorRefs.forEach((ref, i) => {
+    flyRefs.forEach((ref, i) => {
       const g = ref.current;
       if (!g) return;
-      if (t > 6) {
-        g.visible = false;
-        return;
-      }
-      const d = doors[i];
+      const d = flying[i];
       const sign = i === 0 ? 1 : -1;
-      // Blown outward + swept aft, falling away; each door tumbles its own way.
-      g.visible = true;
-      g.position.set(
-        d.center.x + 5 * t + 1.5 * t * t,
-        d.center.y + d.outward.y * (1.5 * t + 2.5 * t * t) - 2.2 * t * t,
-        d.center.z + d.outward.z * (1.5 * t + 2.5 * t * t),
-      );
-      g.rotation.set(sign * 4.2 * t, sign * 1.1 * t, -2.4 * t);
+      if (rud.variant === 'fbo') {
+        // TWO-PHASE departure. Phase 1 (0–0.8 s): the door PEELS about its
+        // 12:00 hinge line, shuddering, so the tearing is watchable. Phase 2:
+        // it lets go — swept aft, floating outward, tumbling, ~10 s on stage.
+        if (t > 14) {
+          g.visible = false;
+          return;
+        }
+        g.visible = true;
+        const peel = Math.min(t / 0.8, 1);
+        const ang =
+          sign * (1.05 * peel * peel + 0.05 * Math.sin(38 * t) * peel * (1 - peel) * 4);
+        // Hinge pivot: the 12:00 line over the door bay's mid-length.
+        const hx = (FAN_COWL.x0 + FAN_COWL.x1) / 2;
+        const hr = 1.81; // outer skin radius over the bay
+        scratch.set(d.center.x - hx, d.center.y - hr, d.center.z); // center − pivot
+        const cos = Math.cos(ang);
+        const sin = Math.sin(ang);
+        const ry = scratch.y * cos - scratch.z * sin;
+        const rz = scratch.y * sin + scratch.z * cos;
+        const tf = Math.max(0, t - 0.8);
+        // Slow, fluttering panels (they have huge drag): drift aft and out,
+        // sinking gently — in frame for ~10 s, watchable, not a blink.
+        g.position.set(
+          d.center.x + 1.2 * tf,
+          hr + ry + d.outward.y * (1.3 * tf + 0.2 * tf * tf) - 0.35 * tf * tf,
+          rz + d.outward.z * (1.3 * tf + 0.2 * tf * tf),
+        );
+        g.rotation.set(ang + sign * 1.7 * tf, sign * 0.7 * tf, -1.1 * tf);
+      } else {
+        // Burst fragments: violent, fast, radial — shrapnel, not doors.
+        if (t > 5) {
+          g.visible = false;
+          return;
+        }
+        g.visible = true;
+        g.position.set(
+          d.center.x + 3 * t,
+          d.center.y + d.outward.y * (11 * t) - 4.9 * t * t,
+          d.center.z + d.outward.z * (11 * t),
+        );
+        g.rotation.set(sign * 9 * t, 2.5 * t, sign * 5 * t);
+      }
     });
   });
   // Cut faces read as sectioned structure: flat, non-shiny, slightly darker
@@ -172,19 +248,22 @@ export function Nacelle() {
 
   return (
     <group ref={root}>
-      {/* Outer cowl shell. After a severe blade-off the fan-cowl doors are
-          GONE: the full/transparent shells swap to the open-bay variant (the
-          cutaway keeps its normal cut shell — it is an analysis view). */}
+      {/* Outer cowl shell. After a catastrophic failure the skin is TORN:
+          fbo swaps to the open-door-bay shell, burst to the punched-hole
+          shell (the cutaway keeps its normal cut shell — an analysis view). */}
       <mesh
-        geometry={doorsGone && viewMode !== 'cutaway' && shellDoorsOff ? shellDoorsOff : shellGeo}
+        geometry={damagedShell && viewMode !== 'cutaway' ? damagedShell : shellGeo}
         material={skinMat}
       />
 
-      {/* The departed doors, tumbling away downwind (fbo aftermath). */}
-      {doors && viewMode !== 'cutaway' && (
+      {/* Charred bay liner behind any opened skin. */}
+      {bayLiner && viewMode !== 'cutaway' && <mesh geometry={bayLiner} material={bayMat} />}
+
+      {/* Departed skin — peeling/tumbling doors or blasted fragments. */}
+      {flying && viewMode !== 'cutaway' && (
         <>
-          {doors.map((d, i) => (
-            <group key={i} ref={doorRefs[i]} position={d.center.toArray()}>
+          {flying.map((d, i) => (
+            <group key={i} ref={flyRefs[i]} position={d.center.toArray()}>
               <mesh geometry={d.geometry} material={skinMat} />
             </group>
           ))}

@@ -26,10 +26,13 @@ const N_DEBRIS = 44;
 const SMOKE_LIFE_S = 2.4; // per-particle loop period
 const DEBRIS_LIFE_S = 1.8;
 
-/** Burst-site anchor on the core cowl (HPT bay, lower right). */
+/** Burst-site anchor AT THE TORN COWL SKIN (see BURST_BAY in
+ *  nacelleGeometry): the fragments opened a hole here, so the fire and the
+ *  smoke column pour OUT of it — buried at core radius they were just a
+ *  glow leaking through the paint. */
 const BURST_X = 1.15;
-const BURST_CLOCK = 4.3;
-const BURST_R = 0.68;
+const BURST_CLOCK = 7.7; // keep in lockstep with BURST_BAY.clock
+const BURST_R = 1.5;
 
 const h = (i: number, k: number) => (((i * 73 + k * 31) % 19) / 19 + ((i * 37) % 7) / 7) / 2 - 0.5;
 
@@ -54,6 +57,26 @@ function getFlameTexture(): THREE.CanvasTexture | null {
   return flameTex;
 }
 
+/** Soft round puff sprite so the smoke Points render as puffs, not squares. */
+let puffTex: THREE.CanvasTexture | null | undefined;
+function getPuffTexture(): THREE.CanvasTexture | null {
+  if (puffTex !== undefined) return puffTex;
+  const surf = tryMakeCanvas(64);
+  if (!surf) {
+    puffTex = null;
+    return puffTex;
+  }
+  const { canvas, ctx } = surf;
+  const g = ctx.createRadialGradient(32, 32, 2, 32, 32, 30);
+  g.addColorStop(0, 'rgba(255,255,255,0.9)');
+  g.addColorStop(0.55, 'rgba(255,255,255,0.42)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 64, 64);
+  puffTex = toTexture(canvas);
+  return puffTex;
+}
+
 export function RudAftermath() {
   const rud = useSimStore((s) => s.rud);
 
@@ -65,6 +88,7 @@ export function RudAftermath() {
   const smokePos = useMemo(() => new Float32Array(N_SMOKE * 3), []);
   const debrisPos = useMemo(() => new Float32Array(N_DEBRIS * 3), []);
   const tex = useMemo(getFlameTexture, []);
+  const puff = useMemo(getPuffTexture, []);
 
   const burstSite = useMemo(() => {
     const { y, z } = clockToYZ(BURST_CLOCK, BURST_R);
@@ -161,8 +185,9 @@ export function RudAftermath() {
           <bufferAttribute attach="attributes-position" args={[smokePos, 3]} />
         </bufferGeometry>
         <pointsMaterial
-          size={0.34}
+          size={0.42}
           color="#17181a"
+          map={puff ?? undefined}
           transparent
           opacity={0}
           depthWrite={false}
@@ -185,13 +210,13 @@ export function RudAftermath() {
         />
       </points>
 
-      {/* Fuel-fed fire at the burst site (burst only; fbo's flash is brief
-          and lives in the rud.fire curve → scale collapses to nothing). */}
-      {tex && (
+      {/* Fuel-fed fire pouring OUT of the torn bay (burst only — the fbo's
+          brief flash is carried by the sparks). */}
+      {tex && rud.variant === 'burst' && (
         <group ref={fireRef} position={burstSite.toArray()} visible={false}>
           {[0, 1, 2].map((k) => (
             <mesh key={k} rotation={[0, k * 1.05, 0]} userData={{ noShadow: true }}>
-              <planeGeometry args={[0.9, 1.5]} />
+              <planeGeometry args={[1.5, 2.4]} />
               <meshBasicMaterial
                 map={tex}
                 transparent
@@ -205,11 +230,11 @@ export function RudAftermath() {
       )}
       <pointLight
         ref={lightRef}
-        position={[burstSite.x, burstSite.y + 0.3, burstSite.z + 0.3]}
+        position={[burstSite.x, burstSite.y * 1.25, burstSite.z * 1.25]}
         color="#ff8438"
         intensity={0}
-        distance={7}
-        decay={1.8}
+        distance={11}
+        decay={1.7}
       />
     </group>
   );

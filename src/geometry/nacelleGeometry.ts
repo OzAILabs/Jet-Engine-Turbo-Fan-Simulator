@@ -15,7 +15,7 @@
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { AXIS, RADII } from '../data/engineLayout';
+import { AXIS, RADII, clockToTheta } from '../data/engineLayout';
 import { createLatheAlongX } from './annularSection';
 
 // --- Inlet lip ellipse ------------------------------------------------------
@@ -460,33 +460,118 @@ export interface FanCowlDoor {
   outward: THREE.Vector3;
 }
 
+/** A shell piece cut between x0..x1 and θ t0..t1, centered on its centroid. */
+function cutShellPiece(x0: number, x1: number, t0: number, t1: number): FanCowlDoor {
+  const band = outerSub(x0, x1);
+  const geo = createLatheAlongX(band.pts, {
+    segments: 40,
+    thetaStart: t0,
+    thetaLength: t1 - t0,
+  });
+  remapSubLatheUVs(geo, band.v, t0, t1 - t0);
+  const midX = (x0 + x1) / 2;
+  const midR = rOnBranch(midX, PROFILE.length - 1, NOSE_INDEX);
+  const mid = (t0 + t1) / 2;
+  const outward = new THREE.Vector3(0, -Math.sin(mid), Math.cos(mid));
+  const center = new THREE.Vector3(midX, outward.y * midR, outward.z * midR);
+  geo.translate(-center.x, -center.y, -center.z);
+  return { geometry: geo, center, outward };
+}
+
 /**
  * The two fan-cowl door panels as separate geometries (translated to their
  * own centroids so they can tumble about themselves). They wear the painted
  * skin material — texts, doors, rivets fly away with them.
  */
 export function createFanCowlDoors(): [FanCowlDoor, FanCowlDoor] {
-  const band = outerSub(FAN_COWL.x0, FAN_COWL.x1);
-  const midX = (FAN_COWL.x0 + FAN_COWL.x1) / 2;
-  const midR = rOnBranch(midX, PROFILE.length - 1, NOSE_INDEX);
-  const spans: Array<[number, number]> = [
+  return [
     // Left door: from the latch strip's edge up the −Z side to the hinge.
-    [THETA_BOTTOM + FAN_COWL.latchHalf, THETA_TOP - FAN_COWL.hingeHalf],
+    cutShellPiece(
+      FAN_COWL.x0,
+      FAN_COWL.x1,
+      THETA_BOTTOM + FAN_COWL.latchHalf,
+      THETA_TOP - FAN_COWL.hingeHalf,
+    ),
     // Right door: from the hinge down the +Z side back to the latch (crosses 2π).
-    [THETA_TOP + FAN_COWL.hingeHalf, Math.PI * 2 + THETA_BOTTOM - FAN_COWL.latchHalf],
+    cutShellPiece(
+      FAN_COWL.x0,
+      FAN_COWL.x1,
+      THETA_TOP + FAN_COWL.hingeHalf,
+      Math.PI * 2 + THETA_BOTTOM - FAN_COWL.latchHalf,
+    ),
   ];
-  return spans.map(([t0, t1]) => {
-    const geo = createLatheAlongX(band.pts, {
-      segments: 70,
-      thetaStart: t0,
-      thetaLength: t1 - t0,
-    });
-    remapSubLatheUVs(geo, band.v, t0, t1 - t0);
-    const mid = (t0 + t1) / 2;
-    // Lathe vertex convention: y = −r·sinθ, z = r·cosθ.
-    const outward = new THREE.Vector3(0, -Math.sin(mid), Math.cos(mid));
-    const center = new THREE.Vector3(midX, outward.y * midR, outward.z * midR);
-    geo.translate(-center.x, -center.y, -center.z);
-    return { geometry: geo, center, outward };
-  }) as [FanCowlDoor, FanCowlDoor];
+}
+
+/* --------------------------------------------------------------------------
+ * Uncontained burst: disk fragments punch a BAY straight through the aft
+ * cowl over the HPT. The shell gets a torn-open rectangle; the punched-out
+ * skin leaves as two unequal fragments (unequal = reads torn, not machined).
+ * ------------------------------------------------------------------------ */
+export const BURST_BAY = {
+  x0: 0.85,
+  x1: 1.65,
+  clock: 7.7, // matches RudState.impactClock / the fire + debris site (+Z flank)
+  half: 0.55, // half-arc [rad] — a ~1.7 m gash at this radius
+} as const;
+
+/** Cowl shell with the burst bay torn open (full/transparent views). */
+export function createNacelleShellBurstHole(): THREE.BufferGeometry {
+  const c = clockToTheta(BURST_BAY.clock);
+  const last = PROFILE.length - 1;
+  // Forward piece: everything up to the bay's forward edge.
+  const fwdPts: Array<[number, number]> = [];
+  const fwdV: number[] = [];
+  for (let j = 0; j <= last && (j <= NOSE_INDEX || PROFILE[j][0] < BURST_BAY.x0); j++) {
+    fwdPts.push(PROFILE[j]);
+    fwdV.push(ARC[j] / TOTAL_ARC);
+  }
+  fwdPts.push([BURST_BAY.x0, rOnBranch(BURST_BAY.x0, last, NOSE_INDEX)]);
+  fwdV.push(vOnBranch(BURST_BAY.x0, last, NOSE_INDEX));
+  const band = outerSub(BURST_BAY.x0, BURST_BAY.x1);
+  const aftSub = outerSub(BURST_BAY.x1, AXIS.nacelleBack);
+
+  const parts: THREE.BufferGeometry[] = [];
+  const fwd = createLatheAlongX(fwdPts, { segments: 140 });
+  remapSubLatheUVs(fwd, fwdV, 0, Math.PI * 2);
+  parts.push(fwd);
+  // Band: the θ complement of the bay (one sweep from bay-end around to
+  // bay-start).
+  const bandGeo = createLatheAlongX(band.pts, {
+    segments: 120,
+    thetaStart: c + BURST_BAY.half,
+    thetaLength: Math.PI * 2 - 2 * BURST_BAY.half,
+  });
+  remapSubLatheUVs(bandGeo, band.v, c + BURST_BAY.half, Math.PI * 2 - 2 * BURST_BAY.half);
+  parts.push(bandGeo);
+  const aft = createLatheAlongX(aftSub.pts, { segments: 140 });
+  remapSubLatheUVs(aft, aftSub.v, 0, Math.PI * 2);
+  parts.push(aft);
+  const merged = mergeGeometries(parts)!;
+  parts.forEach((g) => g.dispose());
+  return merged;
+}
+
+/** The punched-out skin, as two unequal tumbling fragments. */
+export function createBurstFragments(): [FanCowlDoor, FanCowlDoor] {
+  const c = clockToTheta(BURST_BAY.clock);
+  return [
+    cutShellPiece(BURST_BAY.x0, BURST_BAY.x1, c - BURST_BAY.half, c - 0.04),
+    cutShellPiece(BURST_BAY.x0, BURST_BAY.x1 - 0.35, c + 0.04, c + BURST_BAY.half),
+  ];
+}
+
+/**
+ * Dark charred BAY LINER rendered just inside an opened bay. Without it a
+ * hole shows the light-grey duct wall behind — tone-on-tone, it reads as a
+ * faint patch instead of a wound. With it, openings read as black voids
+ * (with the fire pouring out of one, in the burst case).
+ */
+export function createBayLiner(
+  x0: number,
+  x1: number,
+  opts: { thetaStart?: number; thetaLength?: number } = {},
+): THREE.BufferGeometry {
+  const band = outerSub(x0, x1);
+  const sunk = band.pts.map(([x, r]) => [x, r - 0.055] as [number, number]);
+  return createLatheAlongX(sunk, { segments: 90, ...opts });
 }
