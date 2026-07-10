@@ -59,9 +59,9 @@ export function Nacelle() {
     () => createNacelleChevrons({ thetaStart: CUTAWAY.thetaStart, thetaLength: CUTAWAY.thetaLength }),
     [],
   );
-  // Solid-wall pieces: closeout rings seal the shell↔duct cavity at both
-  // ends in every mode; flat cut faces fill the wall cross-section at the
-  // cutaway planes so the cowl reads THICK, not as two paper sheets.
+  // Wall-thickness pieces: closeout rings seal the shell↔duct cavity at both
+  // ends in every mode; panel bands at the cutaway planes give each skin
+  // ~3.5 cm of sandwich thickness while the cavity between stays hollow.
   const closeoutFull = useMemo(() => createNacelleCloseouts(), []);
   const closeoutCut = useMemo(
     () => createNacelleCloseouts({ thetaStart: CUTAWAY.thetaStart, thetaLength: CUTAWAY.thetaLength }),
@@ -149,8 +149,8 @@ export function Nacelle() {
         material={ductMat}
       />
 
-      {/* Solid cut faces at the wedge planes (cutaway only): the wall's
-          cross-section, so the cowl reads thick where it is sectioned. */}
+      {/* Panel-band cut faces at the wedge planes (cutaway only): each skin
+          shows honeycomb-sandwich thickness; the cavity between stays open. */}
       {viewMode === 'cutaway' && <mesh geometry={cutFaces} material={cutFaceMat} />}
 
       {/* Cowl hardware: latch handles, T2 probe, crisp placard decals

@@ -252,36 +252,65 @@ export function createBypassDuctInner(
   return createLatheAlongX(DUCT_PROFILE, { segments: 110, ...opts });
 }
 
+/** Sandwich-panel thickness shown at the cut faces [m]. */
+const SHELL_PANEL_T = 0.035;
+const DUCT_PANEL_T = 0.03;
+
 /**
- * The cowl's CUT FACES for the museum cutaway: flat cross-sections filling
- * the space between the outer shell profile and the bypass-duct inner wall at
- * both ends of the removed wedge. Without these the cowl reads as two
- * infinitely thin sheets with a hollow void between; with them the cut shows
- * a solid D-duct inlet and a thick tapering sandwich wall, like a real
- * sectioned nacelle. Returns BOTH faces merged (one mesh, DoubleSide it).
+ * Offset a profile polyline sideways in the (x, r) plane by t, using averaged
+ * segment normals (n = (dr, −dx)/len — the material side of the shell curve;
+ * pass negative t for the opposite side).
+ */
+function offsetPolyline(pts: Array<[number, number]>, t: number): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  for (let j = 0; j < pts.length; j++) {
+    const a = pts[Math.max(0, j - 1)];
+    const b = pts[Math.min(pts.length - 1, j + 1)];
+    const dx = b[0] - a[0];
+    const dr = b[1] - a[1];
+    const len = Math.hypot(dx, dr) || 1;
+    out.push([pts[j][0] + (dr / len) * t, pts[j][1] - (dx / len) * t]);
+  }
+  return out;
+}
+
+/**
+ * The cowl's CUT FACES for the museum cutaway: NOT a solid fill — a real
+ * cowl is thin honeycomb-sandwich skins with a hollow cavity between. Each
+ * cut plane gets two PANEL BANDS: the shell profile (inner barrel → lip →
+ * outer skin) with ~3.5 cm of panel thickness on its material side, and the
+ * bypass-duct wall with ~3 cm on the cavity side. The lip therefore reads as
+ * a hollow D-duct with a thick wrapped skin, and the space between outer
+ * skin and duct wall stays visibly open. Returns all four bands merged (one
+ * mesh, DoubleSide it).
  */
 export function createNacelleCutFaces(thetaStart: number, thetaLength: number): THREE.BufferGeometry {
-  // Boundary: full shell profile (inner barrel → lip → outer skin → trailing
-  // edge), across the trailing closeout to the duct exit, back along the duct
-  // wall, then the forward closeout returns to the inner barrel edge.
-  const outline = [
-    ...PROFILE.map(([x, r]) => new THREE.Vector2(x, r)),
-    ...[...DUCT_PROFILE].reverse().map(([x, r]) => new THREE.Vector2(x, r)),
+  const bandOutline = (pts: Array<[number, number]>, t: number) => [
+    ...pts.map(([x, r]) => new THREE.Vector2(x, r)),
+    ...offsetPolyline(pts, t)
+      .reverse()
+      .map(([x, r]) => new THREE.Vector2(x, r)),
   ];
-  const shape = new THREE.Shape(outline);
-  const faces = [thetaStart, thetaStart + thetaLength].map((theta) => {
-    const geo = new THREE.ShapeGeometry(shape, 24);
-    // Shape space (x, r) → the half-plane at constant theta: X stays axial,
-    // shape-Y maps onto the radial ray (lathe convention y=−r·sinθ, z=r·cosθ).
-    geo.applyMatrix4(
-      new THREE.Matrix4().makeBasis(
-        new THREE.Vector3(1, 0, 0),
-        new THREE.Vector3(0, -Math.sin(theta), Math.cos(theta)),
-        new THREE.Vector3(0, -Math.cos(theta), -Math.sin(theta)),
-      ),
-    );
-    return geo;
-  });
+  const shapes = [
+    new THREE.Shape(bandOutline(PROFILE, SHELL_PANEL_T)),
+    new THREE.Shape(bandOutline(DUCT_PROFILE, -DUCT_PANEL_T)),
+  ];
+  const faces: THREE.BufferGeometry[] = [];
+  for (const theta of [thetaStart, thetaStart + thetaLength]) {
+    for (const shape of shapes) {
+      const geo = new THREE.ShapeGeometry(shape, 24);
+      // Shape space (x, r) → the half-plane at constant theta: X stays axial,
+      // shape-Y maps onto the radial ray (lathe convention y=−r·sinθ, z=r·cosθ).
+      geo.applyMatrix4(
+        new THREE.Matrix4().makeBasis(
+          new THREE.Vector3(1, 0, 0),
+          new THREE.Vector3(0, -Math.sin(theta), Math.cos(theta)),
+          new THREE.Vector3(0, -Math.cos(theta), -Math.sin(theta)),
+        ),
+      );
+      faces.push(geo);
+    }
+  }
   const merged = mergeGeometries(faces)!;
   faces.forEach((g) => g.dispose());
   return merged;
@@ -291,8 +320,9 @@ export function createNacelleCutFaces(thetaStart: number, thetaLength: number): 
  * Closeout rings sealing the cowl cavity in EVERY view mode: an angled ring
  * joining the outer-skin trailing edge to the bypass-duct exit lip, and a
  * short ring bridging the inner-barrel aft edge to the duct's forward edge
- * (just above the fan tips). With the cut faces these make the cowl a closed
- * solid instead of an open-ended pair of sheets.
+ * (just above the fan tips). These are the closeout ribs/bulkheads of a real
+ * cowl — the structure stays hollow, but you can no longer see into the
+ * open-ended cavity.
  */
 export function createNacelleCloseouts(
   opts: { thetaStart?: number; thetaLength?: number } = {},
