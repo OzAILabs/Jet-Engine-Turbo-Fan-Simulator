@@ -238,7 +238,9 @@ export function createNacelleChevrons(
  * outer shell as the cowl's structural thickness.
  */
 const DUCT_PROFILE: Array<[number, number]> = [
-  [AXIS.fanPlane + 0.1, RADII.nacelleInner * 0.99],
+  // Forward radius clears the fan-blade tips (RADII.fanTip 1.625): the old
+  // 0.99·nacelleInner start left the last 2 cm of blade tip poking through.
+  [AXIS.fanPlane + 0.1, RADII.fanTip + 0.01],
   [0.0, 1.5],
   [1.0, 1.32],
   [1.8, 1.18],
@@ -332,8 +334,17 @@ export function createNacelleCloseouts(
     { segments: 110, ...opts },
   );
   const fwd = createLatheAlongX([PROFILE[0], DUCT_PROFILE[0]], { segments: 110, ...opts });
-  const merged = mergeGeometries([aft, fwd])!;
+  // Inlet AFT BULKHEAD: the flat ring wall closing the back of the hollow
+  // D-duct (barrel → outer skin), like the real inlet's attach bulkhead.
+  // Without it the cutaway lets you sight straight through the D-duct's cut
+  // opening, across the removed wedge, onto the far-side fan blades.
+  const bulkhead = createLatheAlongX(
+    [PROFILE[0], [PROFILE[0][0], RADII.nacelleOuter]],
+    { segments: 110, ...opts },
+  );
+  const merged = mergeGeometries([aft, fwd, bulkhead])!;
   aft.dispose();
   fwd.dispose();
+  bulkhead.dispose();
   return merged;
 }
