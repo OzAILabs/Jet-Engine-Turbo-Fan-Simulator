@@ -389,11 +389,13 @@ export const EXTERNALS = {
    * the open bypass air path. Endpoints (tank nozzles, lube pad) are derived
    * where the tank/pad geometry lives (AccessoryGearbox / SecondaryFlows).
    */
+  // Radii sit ~0.03 inside the duct outer wall, which now holds ~1.64 across
+  // the fan bay (one-piece barrel→duct profile) before tapering aft of −2.4.
   oilSupplyRoute: [
-    [-2.38, 8.2, 1.585],
-    [-2.28, 7.6, 1.575],
-    [-2.18, 7.0, 1.565],
-    [-2.08, 6.45, 1.55],
+    [-2.38, 8.2, 1.61],
+    [-2.28, 7.6, 1.606],
+    [-2.18, 7.0, 1.6],
+    [-2.08, 6.45, 1.594],
     [-2.02, 6.08, 1.44],
     [-2.0, 6.0, 1.1],
     [-2.0, 6.0, 0.8],
@@ -403,10 +405,10 @@ export const EXTERNALS = {
     [-1.7, 5.9, 0.75],
     [-1.98, 5.92, 1.05],
     [-2.03, 5.95, 1.4],
-    [-2.1, 6.4, 1.55],
-    [-2.2, 7.0, 1.545],
-    [-2.3, 7.7, 1.555],
-    [-2.5, 8.5, 1.6],
+    [-2.1, 6.4, 1.595],
+    [-2.2, 7.0, 1.6],
+    [-2.3, 7.7, 1.607],
+    [-2.45, 8.5, 1.615],
   ],
   /** Dual-channel FADEC ECU on the fan case, right side, on vibration isolators. */
   ecu: { x: -2.85, clock: 2.2, r: 1.74, w: 0.55, h: 0.4, d: 0.12 },

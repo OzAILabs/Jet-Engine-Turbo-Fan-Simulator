@@ -238,9 +238,15 @@ export function createNacelleChevrons(
  * outer shell as the cowl's structural thickness.
  */
 const DUCT_PROFILE: Array<[number, number]> = [
-  // Forward radius clears the fan-blade tips (RADII.fanTip 1.625): the old
-  // 0.99·nacelleInner start left the last 2 cm of blade tip poking through.
-  [AXIS.fanPlane + 0.1, RADII.fanTip + 0.01],
+  // Starts EXACTLY at the shell's inner-barrel aft edge so barrel + duct wall
+  // read as ONE continuous surface (no lap joint, no bridge ring), and holds
+  // near-cylindrical until aft of the REAL fan-blade envelope before
+  // tapering. The nominal blade is deceiving: the tip trailing edge sweeps
+  // back to x ≈ −2.48 (sweep 0.34 + 0.78 chord), and twist/camber z-offsets
+  // push the true tip radius to ~1.63 (√(r² + z²), not the loft's r) — the
+  // old taper from x −3.1 cut straight through that arc.
+  [PROFILE[0][0], PROFILE[0][1]], // −2.95, 1.648
+  [-2.4, 1.643], // still ~10 mm above the true tip arc at the TE corner
   [0.0, 1.5],
   [1.0, 1.32],
   [1.8, 1.18],
@@ -319,12 +325,14 @@ export function createNacelleCutFaces(thetaStart: number, thetaLength: number): 
 }
 
 /**
- * Closeout rings sealing the cowl cavity in EVERY view mode: an angled ring
- * joining the outer-skin trailing edge to the bypass-duct exit lip, and a
- * short ring bridging the inner-barrel aft edge to the duct's forward edge
- * (just above the fan tips). These are the closeout ribs/bulkheads of a real
- * cowl — the structure stays hollow, but you can no longer see into the
- * open-ended cavity.
+ * Closeout structure sealing the cowl cavity in EVERY view mode: an angled
+ * ring joining the outer-skin trailing edge to the bypass-duct exit lip, and
+ * the inlet's AFT BULKHEAD — the flat ring wall closing the back of the
+ * hollow D-duct (barrel → outer skin), like the real attach bulkhead. (The
+ * barrel/duct junction itself needs no ring anymore: DUCT_PROFILE starts at
+ * PROFILE[0], so the inner wall is one continuous piece.) The structure
+ * stays hollow, but you can no longer sight into the open-ended cavity or
+ * through the D-duct's cut opening onto the far-side fan blades.
  */
 export function createNacelleCloseouts(
   opts: { thetaStart?: number; thetaLength?: number } = {},
@@ -333,18 +341,12 @@ export function createNacelleCloseouts(
     [PROFILE[PROFILE.length - 1], DUCT_PROFILE[DUCT_PROFILE.length - 1]],
     { segments: 110, ...opts },
   );
-  const fwd = createLatheAlongX([PROFILE[0], DUCT_PROFILE[0]], { segments: 110, ...opts });
-  // Inlet AFT BULKHEAD: the flat ring wall closing the back of the hollow
-  // D-duct (barrel → outer skin), like the real inlet's attach bulkhead.
-  // Without it the cutaway lets you sight straight through the D-duct's cut
-  // opening, across the removed wedge, onto the far-side fan blades.
   const bulkhead = createLatheAlongX(
     [PROFILE[0], [PROFILE[0][0], RADII.nacelleOuter]],
     { segments: 110, ...opts },
   );
-  const merged = mergeGeometries([aft, fwd, bulkhead])!;
+  const merged = mergeGeometries([aft, bulkhead])!;
   aft.dispose();
-  fwd.dispose();
   bulkhead.dispose();
   return merged;
 }
