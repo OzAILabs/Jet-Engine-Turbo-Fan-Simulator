@@ -189,20 +189,43 @@ export function Fan() {
 
   // Drive the spinner + hub spin from the live LP spool angle (no re-render),
   // and fade the motion-blur disc in with fan speed.
+  const wobbleRef = useRef<THREE.Group>(null!);
   useFrame((state) => {
-    const { spool } = useSimStore.getState();
+    const { spool, rud } = useSimStore.getState();
     // Null-guarded: the spool group unmounts when the rotors layer is off.
     if (spoolGroup.current) spoolGroup.current.rotation.x = SPOOL_SPIN_SIGN * spool.lpAngle;
     if (blurMatRef.current) {
       blurMatRef.current.opacity = THREE.MathUtils.clamp((spool.n1 - 0.25) * 0.7, 0, 0.5);
     }
     // Flutter onset above ~85% N1, full amplitude past the redline region.
+    // A RUD event pins it at max — the whole row shudders.
     flutterUniforms.uTime.value = state.clock.elapsedTime;
-    flutterUniforms.uFlutter.value = THREE.MathUtils.smoothstep(spool.n1, 0.85, 1.05);
+    flutterUniforms.uFlutter.value = Math.max(
+      THREE.MathUtils.smoothstep(spool.n1, 0.85, 1.05),
+      rud ? Math.min(1, rud.vibe * 1.2) : 0,
+    );
+    // 1/rev imbalance wobble after a blade release: the whole LP assembly
+    // orbits eccentrically at the spin frequency, amplitude riding rud.vibe —
+    // fast shiver at release, slow heavy lurch as the fan winds down.
+    if (wobbleRef.current) {
+      if (rud) {
+        const a = 0.028 * rud.vibe;
+        const ang = SPOOL_SPIN_SIGN * spool.lpAngle;
+        wobbleRef.current.position.set(0, a * Math.cos(ang), a * Math.sin(ang));
+        wobbleRef.current.rotation.z = 0.006 * rud.vibe * Math.sin(ang);
+      } else if (wobbleRef.current.position.y !== 0) {
+        wobbleRef.current.position.set(0, 0, 0);
+        wobbleRef.current.rotation.z = 0;
+      }
+    }
   });
 
+  // The released blade's slot stays EMPTY (identity changes only on trigger
+  // or reset — a rare, user-driven re-render).
+  const goneBlade = useSimStore((s) => s.rud?.bladeIndex ?? null);
+
   return (
-    <group>
+    <group ref={wobbleRef}>
       {/* Spinner nose cone + fan hub: these turn with the LP spool. */}
       {showRotors && (
         <group ref={spoolGroup}>
@@ -228,13 +251,15 @@ export function Fan() {
         <>
           {showRotors && (
             <>
-              {/* 22 composite fan blades — spin with the LP spool. */}
+              {/* 22 composite fan blades — spin with the LP spool. A RUD
+                  event leaves the released blade's slot visibly empty. */}
               <BladeRow
                 geometry={fanBladeGeo}
                 material={bladeMat}
                 count={config.numFanBlades}
                 x={AXIS.fanPlane}
                 spin="lp"
+                hiddenIndex={goneBlade}
               />
 
               {/* Motion-blur disc: fades in at high RPM so the fan reads as a blur. */}

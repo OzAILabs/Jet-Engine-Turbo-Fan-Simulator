@@ -27,6 +27,7 @@ import { Nozzles } from './Nozzles';
 import { FlowParticles } from './FlowParticles';
 import { ExhaustPlume } from './ExhaustPlume';
 import { StartSmoke } from './StartSmoke';
+import { RudBladeOff } from './RudBladeOff';
 import { StationMarkers } from './StationMarkers';
 import { SectionLabels } from './SectionLabel';
 import { VelocityVectors } from './VelocityVectors';
@@ -133,6 +134,9 @@ export function EngineModel3D() {
           {/* Light-off puff: unburnt fuel out the core nozzle — independent of
               the exhaust style, driven by the start sequence. */}
           <StartSmoke />
+          {/* Catastrophic failure: free blade, impact sparks, scorch (mounts
+              only while a RUD event exists). */}
+          <RudBladeOff />
           <VelocityVectors />
         </>
       )}

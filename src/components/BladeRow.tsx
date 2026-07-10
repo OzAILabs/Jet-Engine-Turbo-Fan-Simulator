@@ -29,6 +29,9 @@ export interface BladeRowProps {
   phase?: number;
   /** Rotation sense. */
   direction?: 1 | -1;
+  /** Instance to hide (scale 0) — a RELEASED blade (RUD event). The slot
+   *  stays empty; the row keeps spinning with the gap, like the real thing. */
+  hiddenIndex?: number | null;
 }
 
 const dummy = new THREE.Object3D();
@@ -41,6 +44,7 @@ export function BladeRow({
   spin = null,
   phase = 0,
   direction = 1,
+  hiddenIndex = null,
 }: BladeRowProps) {
   const groupRef = useRef<THREE.Group>(null!);
   const meshRef = useRef<THREE.InstancedMesh>(null!);
@@ -52,11 +56,13 @@ export function BladeRow({
     for (let k = 0; k < count; k++) {
       dummy.position.set(0, 0, 0);
       dummy.rotation.set(phase + k * step, 0, 0);
+      const s = k === hiddenIndex ? 0 : 1;
+      dummy.scale.set(s, s, s);
       dummy.updateMatrix();
       mesh.setMatrixAt(k, dummy.matrix);
     }
     mesh.instanceMatrix.needsUpdate = true;
-  }, [count, phase]);
+  }, [count, phase, hiddenIndex]);
 
   // Drive the row's spin from the live spool angle (no React re-render).
   useFrame(() => {
