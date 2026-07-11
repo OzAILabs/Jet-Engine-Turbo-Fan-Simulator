@@ -16,7 +16,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { AXIS, RADII, clockToTheta } from '../data/engineLayout';
-import { createLatheAlongX } from './annularSection';
+import { CUTAWAY, createLatheAlongX } from './annularSection';
 
 // --- Inlet lip ellipse ------------------------------------------------------
 // The leading edge is half an ellipse: bottom tangent flows into the inlet
@@ -411,10 +411,10 @@ const THETA_BOTTOM = Math.PI / 2; // u = 0.25 → ALF 6:00
 /**
  * The cowl shell with BOTH fan-cowl doors gone: forward section (barrel +
  * lip), aft section (reverser/core cowl), and the hinge + latch remnant
- * strips across the door bay. Full-view (and transparent) only — the
- * cutaway keeps its normal cut shell, which is an analysis view.
+ * strips across the door bay. Pass kept = CUTAWAY_KEPT for the damage-aware
+ * cutaway variant (every span intersected with the wedge's kept window).
  */
-export function createNacelleShellDoorsOff(): THREE.BufferGeometry {
+export function createNacelleShellDoorsOff(kept?: [number, number]): THREE.BufferGeometry {
   const last = PROFILE.length - 1;
   // Forward piece: every profile point up the barrel/lip/skin to x0.
   const fwdPts: Array<[number, number]> = [];
@@ -429,29 +429,30 @@ export function createNacelleShellDoorsOff(): THREE.BufferGeometry {
   const band = outerSub(FAN_COWL.x0, FAN_COWL.x1);
 
   const parts: THREE.BufferGeometry[] = [];
-  const fwd = createLatheAlongX(fwdPts, { segments: 140 });
-  remapSubLatheUVs(fwd, fwdV, 0, Math.PI * 2);
-  parts.push(fwd);
-  const aft = createLatheAlongX(aftSub.pts, { segments: 140 });
-  remapSubLatheUVs(aft, aftSub.v, 0, Math.PI * 2);
-  parts.push(aft);
+  for (const [s, l] of clampSpans(0, Math.PI * 2, kept)) {
+    const fwd = createLatheAlongX(fwdPts, { segments: 140, thetaStart: s, thetaLength: l });
+    remapSubLatheUVs(fwd, fwdV, s, l);
+    parts.push(fwd);
+    const aft = createLatheAlongX(aftSub.pts, { segments: 140, thetaStart: s, thetaLength: l });
+    remapSubLatheUVs(aft, aftSub.v, s, l);
+    parts.push(aft);
+  }
   for (const [center, half] of [
     [THETA_TOP, FAN_COWL.hingeHalf],
     [THETA_BOTTOM, FAN_COWL.latchHalf],
   ]) {
-    const strip = createLatheAlongX(band.pts, {
-      segments: 8,
-      thetaStart: center - half,
-      thetaLength: half * 2,
-    });
-    remapSubLatheUVs(strip, band.v, center - half, half * 2);
-    parts.push(strip);
+    for (const [s, l] of clampSpans(center - half, half * 2, kept)) {
+      const strip = createLatheAlongX(band.pts, { segments: 8, thetaStart: s, thetaLength: l });
+      remapSubLatheUVs(strip, band.v, s, l);
+      parts.push(strip);
+    }
     // Ragged skin flaps hanging off both edges of each remnant strip —
     // the tearing left them behind (SWA 1380's mangled leftovers).
     for (const [edge, dir] of [
       [center - half, -1],
       [center + half, 1],
     ]) {
+      if (!inKept(edge, kept)) continue;
       for (let k = 0; k < 3; k++) {
         const fx0 = FAN_COWL.x0 + 0.15 + k * 0.7 + 0.2 * jag(k, 1, edge > center ? 5 : 9);
         const fx1 = fx0 + 0.35 + 0.3 * jag(k, 2, 7);
@@ -641,8 +642,8 @@ export const BURST_BAY = {
   half: 0.55, // half-arc [rad] — a ~1.7 m gash at this radius
 } as const;
 
-/** Cowl shell with the burst bay torn open (full/transparent views). */
-export function createNacelleShellBurstHole(): THREE.BufferGeometry {
+/** Cowl shell with the burst bay torn open. Pass kept for the cutaway. */
+export function createNacelleShellBurstHole(kept?: [number, number]): THREE.BufferGeometry {
   const c = clockToTheta(BURST_BAY.clock);
   const last = PROFILE.length - 1;
   // Forward piece: everything up to the bay's forward edge.
@@ -658,28 +659,32 @@ export function createNacelleShellBurstHole(): THREE.BufferGeometry {
   const aftSub = outerSub(BURST_BAY.x1, AXIS.nacelleBack);
 
   const parts: THREE.BufferGeometry[] = [];
-  const fwd = createLatheAlongX(fwdPts, { segments: 140 });
-  remapSubLatheUVs(fwd, fwdV, 0, Math.PI * 2);
-  parts.push(fwd);
-  // Band: the θ complement of the bay (one sweep from bay-end around to
-  // bay-start).
-  const bandGeo = createLatheAlongX(band.pts, {
-    segments: 120,
-    thetaStart: c + BURST_BAY.half,
-    thetaLength: Math.PI * 2 - 2 * BURST_BAY.half,
-  });
-  remapSubLatheUVs(bandGeo, band.v, c + BURST_BAY.half, Math.PI * 2 - 2 * BURST_BAY.half);
-  parts.push(bandGeo);
-  const aft = createLatheAlongX(aftSub.pts, { segments: 140 });
-  remapSubLatheUVs(aft, aftSub.v, 0, Math.PI * 2);
-  parts.push(aft);
+  for (const [s, l] of clampSpans(0, Math.PI * 2, kept)) {
+    const fwd = createLatheAlongX(fwdPts, { segments: 140, thetaStart: s, thetaLength: l });
+    remapSubLatheUVs(fwd, fwdV, s, l);
+    parts.push(fwd);
+    const aft = createLatheAlongX(aftSub.pts, { segments: 140, thetaStart: s, thetaLength: l });
+    remapSubLatheUVs(aft, aftSub.v, s, l);
+    parts.push(aft);
+  }
+  // Band: the θ complement of the bay (a sweep from bay-end around to
+  // bay-start), intersected with the kept window when cutaway.
+  for (const [s, l] of clampSpans(c + BURST_BAY.half, Math.PI * 2 - 2 * BURST_BAY.half, kept)) {
+    const bandGeo = createLatheAlongX(band.pts, { segments: 120, thetaStart: s, thetaLength: l });
+    remapSubLatheUVs(bandGeo, band.v, s, l);
+    parts.push(bandGeo);
+  }
   // PETALING: skin flaps bent hard outward around the puncture — the classic
   // uncontained-failure signature (see any NTSB rotor-burst photo).
   for (let k = 0; k < 3; k++) {
     const fx0 = BURST_BAY.x0 + 0.05 + k * 0.22;
     const fx1 = fx0 + 0.28;
-    parts.push(tornFlap(fx0, fx1, c - BURST_BAY.half, -0.18, 0.7 + 0.5 * jag(k, 1, 51), 60 + k));
-    parts.push(tornFlap(fx0 + 0.08, fx1, c + BURST_BAY.half, 0.18, -(0.7 + 0.5 * jag(k, 2, 53)), 70 + k));
+    if (inKept(c - BURST_BAY.half, kept)) {
+      parts.push(tornFlap(fx0, fx1, c - BURST_BAY.half, -0.18, 0.7 + 0.5 * jag(k, 1, 51), 60 + k));
+    }
+    if (inKept(c + BURST_BAY.half, kept)) {
+      parts.push(tornFlap(fx0 + 0.08, fx1, c + BURST_BAY.half, 0.18, -(0.7 + 0.5 * jag(k, 2, 53)), 70 + k));
+    }
   }
   const merged = mergeGeometries(parts)!;
   parts.forEach((g) => g.dispose());
@@ -695,18 +700,135 @@ export function createBurstFragments(): [FanCowlDoor, FanCowlDoor] {
   ];
 }
 
+/** Bypass-duct wall radius at axial x (piecewise over DUCT_PROFILE). */
+function ductRadiusAt(x: number): number {
+  for (let j = 0; j < DUCT_PROFILE.length - 1; j++) {
+    const [x0, r0] = DUCT_PROFILE[j];
+    const [x1, r1] = DUCT_PROFILE[j + 1];
+    if (x >= x0 && x <= x1) return THREE.MathUtils.lerp(r0, r1, (x - x0) / (x1 - x0));
+  }
+  return x < DUCT_PROFILE[0][0] ? DUCT_PROFILE[0][1] : DUCT_PROFILE[DUCT_PROFILE.length - 1][1];
+}
+
+const TWO_PI = Math.PI * 2;
+/** The cutaway's kept angular window, for damage-aware cut variants. */
+export const CUTAWAY_KEPT: [number, number] = [
+  CUTAWAY.thetaStart,
+  CUTAWAY.thetaStart + CUTAWAY.thetaLength,
+];
+
+/** Intersect an angular span with a kept window (cutaway variants). */
+function clampSpans(t0: number, len: number, kept?: [number, number]): Array<[number, number]> {
+  if (!kept) return [[t0, len]];
+  const a = ((t0 % TWO_PI) + TWO_PI) % TWO_PI;
+  const parts: Array<[number, number]> =
+    a + len > TWO_PI
+      ? [
+          [a, TWO_PI - a],
+          [0, a + len - TWO_PI],
+        ]
+      : [[a, len]];
+  const out: Array<[number, number]> = [];
+  for (const [s, l] of parts) {
+    const lo = Math.max(s, kept[0]);
+    const hi = Math.min(s + l, kept[1]);
+    if (hi - lo > 0.03) out.push([lo, hi - lo]);
+  }
+  return out;
+}
+
+/** Is angle t inside the kept window (or is there no window)? */
+const inKept = (t: number, kept?: [number, number]) => {
+  if (!kept) return true;
+  const a = ((t % TWO_PI) + TWO_PI) % TWO_PI;
+  return a >= kept[0] && a <= kept[1];
+};
+
 /**
- * Dark charred BAY LINER rendered just inside an opened bay. Without it a
- * hole shows the light-grey duct wall behind — tone-on-tone, it reads as a
- * faint patch instead of a wound. With it, openings read as black voids
- * (with the fire pouring out of one, in the burst case).
+ * Dark charred BAY LINER at the BOTTOM of an opened bay — it sits ON the
+ * duct wall (the cavity floor), not under the skin, so it is a scorched
+ * backdrop BEHIND the machinery living in the cavity (oil tank, ECU, the
+ * mangled-innards greebles): an opened bay shows wreckage in front of
+ * black, not a clean black lid.
  */
 export function createBayLiner(
   x0: number,
   x1: number,
   opts: { thetaStart?: number; thetaLength?: number } = {},
 ): THREE.BufferGeometry {
-  const band = outerSub(x0, x1);
-  const sunk = band.pts.map(([x, r]) => [x, r - 0.055] as [number, number]);
-  return createLatheAlongX(sunk, { segments: 90, ...opts });
+  const N = 8;
+  const pts: Array<[number, number]> = [];
+  for (let i = 0; i <= N; i++) {
+    const x = THREE.MathUtils.lerp(x0, x1, i / N);
+    pts.push([x, ductRadiusAt(x) + 0.015]);
+  }
+  return createLatheAlongX(pts, { segments: 90, ...opts });
+}
+
+/**
+ * MANGLED INNARDS strewn through an opened bay: bent frame ribs knocked
+ * askew and sagging cable runs, filling the cavity between the charred
+ * liner and the torn skin line. Split by material (charred vs bare metal).
+ * Pass CUTAWAY_KEPT to drop pieces the cutaway wedge removes.
+ */
+export function createBayInnards(
+  variant: 'doors' | 'hole',
+  kept?: [number, number],
+): { dark: THREE.BufferGeometry | null; steel: THREE.BufferGeometry | null } {
+  const dark: THREE.BufferGeometry[] = [];
+  const steel: THREE.BufferGeometry[] = [];
+  const spans: Array<[number, number]> =
+    variant === 'doors'
+      ? [
+          [THETA_BOTTOM + FAN_COWL.latchHalf, THETA_TOP - FAN_COWL.hingeHalf],
+          [THETA_TOP + FAN_COWL.hingeHalf, TWO_PI + THETA_BOTTOM - FAN_COWL.latchHalf],
+        ]
+      : [
+          [
+            clockToTheta(BURST_BAY.clock) - BURST_BAY.half + 0.08,
+            clockToTheta(BURST_BAY.clock) + BURST_BAY.half - 0.08,
+          ],
+        ];
+  const [bx0, bx1] =
+    variant === 'doors'
+      ? [FAN_COWL.x0 + 0.15, FAN_COWL.x1 - 0.15]
+      : [BURST_BAY.x0 + 0.05, BURST_BAY.x1 - 0.05];
+  spans.forEach(([t0, t1], sIdx) => {
+    const n = variant === 'doors' ? 8 : 5;
+    for (let k = 0; k < n; k++) {
+      const th = t0 + (t1 - t0) * ((k + 0.5) / n) + 0.2 * (jag(k, 1, sIdx) - 0.5);
+      if (!inKept(th, kept)) continue;
+      const x = bx0 + (bx1 - bx0) * jag(k, 2, sIdx + 3);
+      const rDuct = ductRadiusAt(x);
+      // Bent frame rib, knocked off its station.
+      const rib = new THREE.BoxGeometry(0.05, 0.26 + 0.2 * jag(k, 3, sIdx), 0.03);
+      rib.rotateZ(0.9 * (jag(k, 5, sIdx) - 0.5));
+      rib.rotateX(th + 0.5 * (jag(k, 4, sIdx) - 0.5));
+      const rr = rDuct + 0.06 + 0.06 * jag(k, 6, sIdx);
+      rib.translate(x, -rr * Math.sin(th), rr * Math.cos(th));
+      (jag(k, 7, sIdx) > 0.45 ? dark : steel).push(rib);
+      // A sagging severed cable run every other slot.
+      if (k % 2 === 0) {
+        const th2 = th + 0.28 + 0.2 * jag(k, 8, sIdx);
+        if (!inKept(th2, kept)) continue;
+        const mid = (th + th2) / 2;
+        const rHang = rDuct + 0.1;
+        const cable = new THREE.TubeGeometry(
+          new THREE.CatmullRomCurve3([
+            new THREE.Vector3(x, -rHang * Math.sin(th), rHang * Math.cos(th)),
+            new THREE.Vector3(x + 0.15, -(rDuct + 0.02) * Math.sin(mid), (rDuct + 0.02) * Math.cos(mid)),
+            new THREE.Vector3(x + 0.05, -rHang * Math.sin(th2), rHang * Math.cos(th2)),
+          ]),
+          12,
+          0.012,
+          6,
+        );
+        dark.push(cable);
+      }
+    }
+  });
+  return {
+    dark: dark.length ? mergeGeometries(dark)! : null,
+    steel: steel.length ? mergeGeometries(steel)! : null,
+  };
 }

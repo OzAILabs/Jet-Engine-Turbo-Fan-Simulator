@@ -121,8 +121,10 @@ export function createRudState(
     egtAtRelease: egtC,
     oilAtRelease: oilPsi,
     thrustAtRelease: netThrustN,
-    // A dead fan windmills faster with more ram air; near-still at SLS. [EST]
-    windmillN1: 0.015 + 0.06 * mach,
+    // A dead fan only windmills if there is ram air to drive it: the floor
+    // scales with flight Mach and is ZERO at static conditions — on the
+    // ground the wreck grinds to a complete stop. [EST]
+    windmillN1: 0.075 * mach,
   };
 }
 
@@ -142,8 +144,10 @@ export function advanceRud(prev: RudState, dt: number): RudState {
   // N1: enormous aero + rub drag on the unbalanced fan, decaying toward the
   // windmill floor rather than zero.
   const n1Tau = v === 'fbo' ? 6 : 4.5;
-  const n1 =
-    prev.windmillN1 + (prev.n1 - prev.windmillN1) * Math.exp(-dt / n1Tau);
+  let n1 = prev.windmillN1 + (prev.n1 - prev.windmillN1) * Math.exp(-dt / n1Tau);
+  // Static conditions: rub friction wins over the exponential tail — the
+  // rotor visibly STOPS instead of creeping forever.
+  if (prev.windmillN1 < 0.005 && n1 < 0.006) n1 = 0;
 
   // --- EGT --------------------------------------------------------------------
   // Cascade: reversed/re-ingested hot gas spikes the probes; after flameout

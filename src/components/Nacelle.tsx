@@ -30,6 +30,8 @@ import {
   createNacelleShellBurstHole,
   createBurstFragments,
   createBayLiner,
+  createBayInnards,
+  CUTAWAY_KEPT,
   FAN_COWL,
   BURST_BAY,
 } from '../geometry/nacelleGeometry';
@@ -101,6 +103,32 @@ export function Nacelle() {
       doorsGone ? createNacelleShellDoorsOff() : holeOpen ? createNacelleShellBurstHole() : null,
     [doorsGone, holeOpen],
   );
+  // Damage-aware CUTAWAY shell: same torn geometry, intersected with the
+  // wedge's kept window — the cutaway shows the event too, live and after.
+  const damagedShellCut = useMemo(
+    () =>
+      doorsGone
+        ? createNacelleShellDoorsOff(CUTAWAY_KEPT)
+        : holeOpen
+          ? createNacelleShellBurstHole(CUTAWAY_KEPT)
+          : null,
+    [doorsGone, holeOpen],
+  );
+  // Wreckage strewn through the opened cavity (bent ribs, sagging cables) —
+  // in front of the charred liner, behind the torn skin line.
+  const innards = useMemo(
+    () => (doorsGone ? createBayInnards('doors') : holeOpen ? createBayInnards('hole') : null),
+    [doorsGone, holeOpen],
+  );
+  const innardsCut = useMemo(
+    () =>
+      doorsGone
+        ? createBayInnards('doors', CUTAWAY_KEPT)
+        : holeOpen
+          ? createBayInnards('hole', CUTAWAY_KEPT)
+          : null,
+    [doorsGone, holeOpen],
+  );
   // fbo: the two doors PEEL for half a second, then shatter into shreds.
   // burst: the punched-out skin flies as two ragged fragments immediately.
   const doors = useMemo(() => (doorsGone ? createFanCowlDoors() : null), [doorsGone]);
@@ -108,8 +136,8 @@ export function Nacelle() {
     () => (doorsGone ? createDoorShreds() : holeOpen ? createBurstFragments() : null),
     [doorsGone, holeOpen],
   );
-  // Charred liner behind the opening so the wound reads BLACK, not the
-  // light duct wall tone-on-tone behind a light skin.
+  // Charred liner on the cavity floor so the wound reads black behind the
+  // wreckage, not light duct wall tone-on-tone behind a light skin.
   const bayLiner = useMemo(
     () =>
       doorsGone
@@ -122,6 +150,25 @@ export function Nacelle() {
           : null,
     [doorsGone, holeOpen],
   );
+  const bayLinerCut = useMemo(() => {
+    if (doorsGone) {
+      return createBayLiner(FAN_COWL.x0, FAN_COWL.x1, {
+        thetaStart: CUTAWAY_KEPT[0],
+        thetaLength: CUTAWAY_KEPT[1] - CUTAWAY_KEPT[0],
+      });
+    }
+    if (holeOpen) {
+      const lo = Math.max(clockToTheta(BURST_BAY.clock) - BURST_BAY.half - 0.12, CUTAWAY_KEPT[0]);
+      const hi = Math.min(clockToTheta(BURST_BAY.clock) + BURST_BAY.half + 0.12, CUTAWAY_KEPT[1]);
+      return hi > lo
+        ? createBayLiner(BURST_BAY.x0 - 0.08, BURST_BAY.x1 + 0.08, {
+            thetaStart: lo,
+            thetaLength: hi - lo,
+          })
+        : null;
+    }
+    return null;
+  }, [doorsGone, holeOpen]);
   const bayMat = useMemo(
     () =>
       new THREE.MeshStandardMaterial({
@@ -262,19 +309,35 @@ export function Nacelle() {
 
   return (
     <group ref={root}>
-      {/* Outer cowl shell. After a catastrophic failure the skin is TORN:
-          fbo swaps to the open-door-bay shell, burst to the punched-hole
-          shell (the cutaway keeps its normal cut shell — an analysis view). */}
+      {/* Outer cowl shell. After a catastrophic failure the skin is TORN in
+          EVERY view: full/transparent swap to the open-bay shell, cutaway to
+          the same damage intersected with its kept wedge. */}
       <mesh
-        geometry={damagedShell && viewMode !== 'cutaway' ? damagedShell : shellGeo}
+        geometry={
+          viewMode === 'cutaway'
+            ? (damagedShellCut ?? shellGeo)
+            : (damagedShell ?? shellGeo)
+        }
         material={skinMat}
       />
 
-      {/* Charred bay liner behind any opened skin. */}
-      {bayLiner && viewMode !== 'cutaway' && <mesh geometry={bayLiner} material={bayMat} />}
+      {/* Charred bay liner + wreckage strewn through the opened cavity. */}
+      {(viewMode === 'cutaway' ? bayLinerCut : bayLiner) && (
+        <mesh geometry={(viewMode === 'cutaway' ? bayLinerCut : bayLiner)!} material={bayMat} />
+      )}
+      {(() => {
+        const inn = viewMode === 'cutaway' ? innardsCut : innards;
+        if (!inn) return null;
+        return (
+          <>
+            {inn.dark && <mesh geometry={inn.dark} material={bayMat} castShadow={false} />}
+            {inn.steel && <mesh geometry={inn.steel} material={cutFaceMat} castShadow={false} />}
+          </>
+        );
+      })()}
 
       {/* Departed skin: the peeling doors (first half-second, fbo)... */}
-      {doors && viewMode !== 'cutaway' && (
+      {doors && (
         <>
           {doors.map((d, i) => (
             <group key={`door-${i}`} ref={doorRefs[i]} position={d.center.toArray()}>
@@ -284,7 +347,7 @@ export function Nacelle() {
         </>
       )}
       {/* ...then the ragged shreds / burst fragments, scattering violently. */}
-      {flying && viewMode !== 'cutaway' && (
+      {flying && (
         <>
           {flying.map((d, i) => (
             <group
@@ -324,7 +387,7 @@ export function Nacelle() {
       {/* GE-style blue outline on the cut edges (cutaway mode only). */}
       {viewMode === 'cutaway' && (
         <>
-          <CutawayEdges geometry={shellCut} />
+          <CutawayEdges geometry={damagedShellCut ?? shellCut} />
           <CutawayEdges geometry={ductCut} />
         </>
       )}

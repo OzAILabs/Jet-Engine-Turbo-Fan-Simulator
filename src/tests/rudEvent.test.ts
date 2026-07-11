@@ -42,13 +42,13 @@ describe('fan blade off (contained — the FAR 33.94 event)', () => {
     expect(S().engine.fuelFlow).toBe(0);
     expect(S().engine.netThrust).toBeLessThan(thrustBefore * 0.02);
 
-    // Long rundown: spools coast to a windmill, oil bleeds away, EGT cools.
+    // Long rundown: spools grind to a stop (static air — no ram to windmill
+    // the dead fan), oil bleeds away, EGT cools.
     step(30);
     const rud = S().rud!;
     expect(rud.phase).toBe('windmill');
     expect(rud.n2).toBeLessThan(0.03);
-    expect(rud.n1).toBeLessThan(0.12);
-    expect(rud.n1).toBeGreaterThan(0); // windmilling, not frozen
+    expect(rud.n1).toBe(0); // SLS: the wreck comes to a complete stop
     expect(S().instruments.oilPressurePsi).toBeLessThan(3);
     expect(S().engine.egtC).toBeLessThan(rud.egtAtRelease);
     // The shake dies with the speed, and the smoke clears.
@@ -75,6 +75,16 @@ describe('fan blade off (contained — the FAR 33.94 event)', () => {
     S().resetToColdDark();
     S().triggerRud('fbo');
     expect(S().rud).toBeNull();
+  });
+
+  it('windmills in flight: ram air keeps the dead fan turning at cruise', () => {
+    S().resetToCruise(); // M 0.85
+    step(2);
+    S().triggerRud('fbo');
+    step(40);
+    const rud = S().rud!;
+    expect(rud.n1).toBeGreaterThan(0.04);
+    expect(rud.n1).toBeLessThan(0.12);
   });
 });
 
