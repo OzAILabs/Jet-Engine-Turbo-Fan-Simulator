@@ -5,10 +5,10 @@
  * spool dynamics each frame (frame-rate independent, clamped dt), and every
  * rotating component reads the resulting angle from the store.
  */
-import { Suspense, useEffect } from 'react';
+import { Suspense, useEffect, useMemo } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Bloom, EffectComposer, SSAO, ToneMapping } from '@react-three/postprocessing';
-import { BlendFunction, ToneMappingMode } from 'postprocessing';
+import { BlendFunction, DepthOfFieldEffect, ToneMappingMode } from 'postprocessing';
 import * as THREE from 'three';
 import { useSimStore } from '../store/useSimStore';
 import { CameraRig } from './CameraRig';
@@ -86,6 +86,107 @@ function SectionCut() {
   return null;
 }
 
+/**
+ * PostChain — the whole post-processing stack, in order: AO → (DoF) → bloom →
+ * tone map. It owns the EffectComposer so it can subscribe to presentationMode
+ * itself; EngineScene stays a pure structural component that never re-renders
+ * on a mode toggle.
+ *
+ * Order rationale:
+ *  • SSAO darkens contacts and crevices. This engine is entirely nested
+ *    geometry (drums inside cases, blade roots in dovetails, bolt circles,
+ *    hundreds of plumbing greebles) and without contact darkening those parts
+ *    read as shells that happen to intersect rather than hardware seated
+ *    inside hardware. Needs the composer's normal pass (one extra geometry
+ *    pass — full-screen cost, no new draw calls against the scene budget).
+ *    luminanceInfluence stays mid-high on purpose: it suppresses AO in bright
+ *    regions, keeping the additive plume, fire and sparks free of dark halos.
+ *  • Depth of field, PRESENTATION MODE ONLY (see below) — after AO, because
+ *    occlusion is a shading term that belongs in the sharp image; before
+ *    bloom, so out-of-focus highlights bloom as the soft discs they've become.
+ *  • Bloom only lifts genuinely HDR pixels (threshold > 1 — igniter sparks,
+ *    over-temp glow, the bright exhaust core).
+ *  • ACES tone mapping sits at the END (the composer takes over from the
+ *    renderer).
+ *
+ * WHY DoF IS HAND-BUILT: @react-three/postprocessing's <DepthOfField> wrapper
+ * sets a property on `effect.maskPass`, which postprocessing 6.39 no longer
+ * exposes — a TypeError thrown during render that unmounts the entire Canvas
+ * (a black screen, not a broken blur). Constructing DepthOfFieldEffect
+ * directly and mounting it with <primitive> — exactly what the working
+ * wrappers do internally — avoids that path completely. The construction is
+ * additionally wrapped in try/catch so any future surprise degrades to "no
+ * depth of field" instead of taking down the renderer.
+ *
+ * WHY PRESENTATION ONLY: a photographic depth falloff is the strongest single
+ * cue separating "a render" from "a photograph of hardware", and it would
+ * wreck an analysis view where a student comparing stage 4 to stage 9 needs
+ * both sharp. Presentation mode is also the only mode that forces the
+ * perspective projection DoF needs to mean anything.
+ */
+function PostChain() {
+  const presentationMode = useSimStore((s) => s.presentationMode);
+  const camera = useThree((s) => s.camera);
+  const controls = useThree((s) => s.controls) as { target?: THREE.Vector3 } | null;
+
+  const dof = useMemo(() => {
+    if (!presentationMode) return null;
+    try {
+      return new DepthOfFieldEffect(camera, {
+        worldFocusDistance: 9, // replaced every frame by the tracker below
+        focusRange: 3.2, // metres held sharp around the focus point
+        bokehScale: 2.6,
+        resolutionScale: 0.75,
+      });
+    } catch (err) {
+      console.warn('Depth of field unavailable; continuing without it.', err);
+      return null;
+    }
+  }, [presentationMode, camera]);
+
+  useEffect(() => () => dof?.dispose(), [dof]);
+
+  // Focus follows the orbit pivot, so zooming into the fan keeps the fan crisp
+  // with the tail falling away, while the hero pose sits the whole engine
+  // inside the focus range.
+  useFrame(() => {
+    if (!dof) return;
+    const target = controls?.target;
+    dof.worldFocusDistance = target
+      ? camera.position.distanceTo(target)
+      : camera.position.length();
+  });
+
+  return (
+    // Keyed so the composer fully rebuilds its pass list when DoF comes and
+    // goes: EffectComposer collects effects in a layout effect that would not
+    // otherwise re-run for a conditional child.
+    <EffectComposer key={dof ? 'dof' : 'plain'} multisampling={4} enableNormalPass>
+      <SSAO
+        blendFunction={BlendFunction.MULTIPLY}
+        samples={24}
+        rings={5} // not a multiple of samples — avoids banding in the spiral
+        radius={0.06} // screen-relative: tight, contact-scale occlusion
+        intensity={1.7}
+        bias={0.03}
+        fade={0.02}
+        luminanceInfluence={0.5}
+        minRadiusScale={0.15}
+        // World-space fade (scene units are meters; the engine spans ~8 m).
+        worldDistanceThreshold={14}
+        worldDistanceFalloff={6}
+        worldProximityThreshold={0.4}
+        worldProximityFalloff={0.12}
+        resolutionScale={0.75}
+        depthAwareUpsampling
+      />
+      {dof ? <primitive object={dof} /> : null}
+      <Bloom mipmapBlur luminanceThreshold={1.0} luminanceSmoothing={0.2} intensity={0.85} />
+      <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
+    </EffectComposer>
+  );
+}
+
 export function EngineScene() {
   return (
     <Canvas
@@ -118,44 +219,8 @@ export function EngineScene() {
         <EngineModel3D />
       </Suspense>
 
-      {/* Post chain, in order: AO → bloom → tone map.
-          • SSAO darkens contacts and crevices. This engine is entirely nested
-            geometry (drums inside cases, blade roots in dovetails, bolt
-            circles, hundreds of plumbing greebles) and without contact
-            darkening those parts read as shells that happen to intersect
-            rather than hardware seated inside hardware. Needs the composer's
-            normal pass (one extra geometry pass — full-screen cost, no new
-            draw calls against the scene budget).
-            luminanceInfluence stays mid-high on purpose: it suppresses AO in
-            bright regions, which keeps the additive exhaust plume, fire and
-            spark sprites from picking up dark halos.
-          • Bloom only lifts genuinely HDR pixels (threshold > 1 — igniter
-            sparks, over-temp glow, the bright exhaust core); everything
-            tone-mapped normal stays untouched.
-          • ACES tone mapping sits at the END of the chain (the composer takes
-            over from the renderer). */}
-      <EffectComposer multisampling={4} enableNormalPass>
-        <SSAO
-          blendFunction={BlendFunction.MULTIPLY}
-          samples={24}
-          rings={5} // not a multiple of samples — avoids banding in the spiral
-          radius={0.06} // screen-relative: tight, contact-scale occlusion
-          intensity={1.7}
-          bias={0.03}
-          fade={0.02}
-          luminanceInfluence={0.5}
-          minRadiusScale={0.15}
-          // World-space fade (scene units are meters; the engine spans ~8 m).
-          worldDistanceThreshold={14}
-          worldDistanceFalloff={6}
-          worldProximityThreshold={0.4}
-          worldProximityFalloff={0.12}
-          resolutionScale={0.75}
-          depthAwareUpsampling
-        />
-        <Bloom mipmapBlur luminanceThreshold={1.0} luminanceSmoothing={0.2} intensity={0.85} />
-        <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
-      </EffectComposer>
+      {/* AO → (DoF in presentation mode) → bloom → tone map. See PostChain. */}
+      <PostChain />
 
       <PhysicsTicker />
       <CaptureBridge />
