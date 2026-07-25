@@ -36,6 +36,7 @@ import {
   visibleInCutaway,
 } from '../../data/engineLayout';
 import { CUTAWAY, createLatheAlongX } from '../../geometry/annularSection';
+import { createCastingMaterial, createMachinedMaterial } from '../../materials/hardware';
 
 // --- Angular conventions ----------------------------------------------------
 /** Instance slot rotation about +X that carries a part at +Y to ALF clock h. */
@@ -98,10 +99,12 @@ export function CompressorBleedSystems() {
   // --- Materials (created once) --------------------------------------------
   const mats = useMemo(
     () => ({
-      steel: new THREE.MeshStandardMaterial({ color: '#b8c0cc', metalness: 0.8, roughness: 0.35 }),
-      bracket: new THREE.MeshStandardMaterial({ color: '#8a9099', metalness: 0.7, roughness: 0.45 }),
-      gold: new THREE.MeshStandardMaterial({ color: '#c9a96a', metalness: 0.9, roughness: 0.3 }),
-      caseMetal: new THREE.MeshStandardMaterial({ color: '#aab3bf', metalness: 0.85, roughness: 0.45 }),
+      // Machined for actuator barrels/rods/fittings, cast for the mounts and
+      // case bosses — palette unchanged, relief added (hardware.ts).
+      steel: createMachinedMaterial({ color: '#b8c0cc', metalness: 0.8, roughness: 0.35 }),
+      bracket: createCastingMaterial({ color: '#8a9099', metalness: 0.7, roughness: 0.45 }),
+      gold: createMachinedMaterial({ color: '#c9a96a', metalness: 0.9, roughness: 0.3 }),
+      caseMetal: createCastingMaterial({ color: '#aab3bf', metalness: 0.85, roughness: 0.45 }),
       fuel: new THREE.MeshStandardMaterial({ color: TUBE_COLORS.fuel, metalness: 0.4, roughness: 0.5 }),
       pneumatic: new THREE.MeshStandardMaterial({ color: TUBE_COLORS.pneumatic, metalness: 0.4, roughness: 0.5 }),
     }),

@@ -25,6 +25,7 @@ import {
   coreCaseRadiusAt,
   visibleInCutaway,
 } from '../../data/engineLayout';
+import { createCastingMaterial, createMachinedMaterial } from '../../materials/hardware';
 
 // --- Flange / bolt proportions (meters) ------------------------------------
 const FLANGE_LEN = 0.035; // axial width of the bolted rim
@@ -111,19 +112,27 @@ export function CaseDetail() {
 
   // --- Materials -------------------------------------------------------------
   const flangeMat = useMemo(
-    () => new THREE.MeshStandardMaterial({ color: '#9aa3ae', metalness: 0.85, roughness: 0.4, side: THREE.DoubleSide }),
+    // Flanges are turned rings and bolt heads are formed/ground — machined
+    // relief. The drain mast and brackets are castings. Palette unchanged.
+    () =>
+      createMachinedMaterial({
+        color: '#9aa3ae',
+        metalness: 0.85,
+        roughness: 0.4,
+        side: THREE.DoubleSide,
+      }),
     [],
   );
   const boltMat = useMemo(
-    () => new THREE.MeshStandardMaterial({ color: '#5b6168', metalness: 0.7, roughness: 0.5 }),
+    () => createMachinedMaterial({ color: '#5b6168', metalness: 0.7, roughness: 0.5 }),
     [],
   );
   const brassMat = useMemo(
-    () => new THREE.MeshStandardMaterial({ color: '#c9a96a', metalness: 0.8, roughness: 0.35 }),
+    () => createMachinedMaterial({ color: '#c9a96a', metalness: 0.8, roughness: 0.35 }),
     [],
   );
   const bracketMat = useMemo(
-    () => new THREE.MeshStandardMaterial({ color: '#8a9099', metalness: 0.75, roughness: 0.45 }),
+    () => createCastingMaterial({ color: '#8a9099', metalness: 0.75, roughness: 0.45 }),
     [],
   );
 

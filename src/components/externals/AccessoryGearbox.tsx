@@ -30,6 +30,7 @@ import {
   coreCaseRadiusAt,
   visibleInCutaway,
 } from '../../data/engineLayout';
+import { createCastingMaterial, createMachinedMaterial } from '../../materials/hardware';
 
 // --- Derived placement constants (all from EXTERNALS) ----------------------
 const AGB = EXTERNALS.agb;
@@ -227,10 +228,12 @@ export function AccessoryGearbox() {
   // --- Materials (one per merged group; flat aerospace palette) -------------
   const M = useMemo(
     () => ({
-      casing: new THREE.MeshStandardMaterial({ color: '#aab3bf', metalness: 0.8, roughness: 0.5 }),
-      bracket: new THREE.MeshStandardMaterial({ color: '#8a9099', metalness: 0.7, roughness: 0.55 }),
-      dark: new THREE.MeshStandardMaterial({ color: '#3a3f47', metalness: 0.4, roughness: 0.6 }),
-      brass: new THREE.MeshStandardMaterial({ color: '#c9a96a', metalness: 0.9, roughness: 0.35 }),
+      // Cast finishes for the housings/boxes, machined for the fittings —
+      // same palette as before, but the surfaces now catch light (hardware.ts).
+      casing: createCastingMaterial({ color: '#aab3bf', metalness: 0.8, roughness: 0.5 }),
+      bracket: createMachinedMaterial({ color: '#8a9099', metalness: 0.7, roughness: 0.55 }),
+      dark: createCastingMaterial({ color: '#3a3f47', metalness: 0.4, roughness: 0.6 }),
+      brass: createMachinedMaterial({ color: '#c9a96a', metalness: 0.9, roughness: 0.35 }),
       fuel: new THREE.MeshStandardMaterial({ color: TUBE_COLORS.fuel, metalness: 0.6, roughness: 0.45 }),
       oil: new THREE.MeshStandardMaterial({ color: TUBE_COLORS.oil, metalness: 0.6, roughness: 0.45 }),
       pneumatic: new THREE.MeshStandardMaterial({ color: TUBE_COLORS.pneumatic, metalness: 0.6, roughness: 0.45 }),
