@@ -7,8 +7,8 @@
  */
 import { Suspense, useEffect } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Bloom, EffectComposer, ToneMapping } from '@react-three/postprocessing';
-import { ToneMappingMode } from 'postprocessing';
+import { Bloom, EffectComposer, SSAO, ToneMapping } from '@react-three/postprocessing';
+import { BlendFunction, ToneMappingMode } from 'postprocessing';
 import * as THREE from 'three';
 import { useSimStore } from '../store/useSimStore';
 import { CameraRig } from './CameraRig';
@@ -118,11 +118,41 @@ export function EngineScene() {
         <EngineModel3D />
       </Suspense>
 
-      {/* Post chain: bloom only lifts genuinely HDR pixels (threshold > 1 —
-          igniter sparks, over-temp glow, the bright exhaust core); everything
-          tone-mapped normal stays untouched. ACES tone mapping moves to the
-          END of the chain (the composer takes over from the renderer). */}
-      <EffectComposer multisampling={4}>
+      {/* Post chain, in order: AO → bloom → tone map.
+          • SSAO darkens contacts and crevices. This engine is entirely nested
+            geometry (drums inside cases, blade roots in dovetails, bolt
+            circles, hundreds of plumbing greebles) and without contact
+            darkening those parts read as shells that happen to intersect
+            rather than hardware seated inside hardware. Needs the composer's
+            normal pass (one extra geometry pass — full-screen cost, no new
+            draw calls against the scene budget).
+            luminanceInfluence stays mid-high on purpose: it suppresses AO in
+            bright regions, which keeps the additive exhaust plume, fire and
+            spark sprites from picking up dark halos.
+          • Bloom only lifts genuinely HDR pixels (threshold > 1 — igniter
+            sparks, over-temp glow, the bright exhaust core); everything
+            tone-mapped normal stays untouched.
+          • ACES tone mapping sits at the END of the chain (the composer takes
+            over from the renderer). */}
+      <EffectComposer multisampling={4} enableNormalPass>
+        <SSAO
+          blendFunction={BlendFunction.MULTIPLY}
+          samples={24}
+          rings={5} // not a multiple of samples — avoids banding in the spiral
+          radius={0.06} // screen-relative: tight, contact-scale occlusion
+          intensity={1.7}
+          bias={0.03}
+          fade={0.02}
+          luminanceInfluence={0.5}
+          minRadiusScale={0.15}
+          // World-space fade (scene units are meters; the engine spans ~8 m).
+          worldDistanceThreshold={14}
+          worldDistanceFalloff={6}
+          worldProximityThreshold={0.4}
+          worldProximityFalloff={0.12}
+          resolutionScale={0.75}
+          depthAwareUpsampling
+        />
         <Bloom mipmapBlur luminanceThreshold={1.0} luminanceSmoothing={0.2} intensity={0.85} />
         <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
       </EffectComposer>
