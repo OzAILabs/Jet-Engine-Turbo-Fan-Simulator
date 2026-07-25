@@ -7,8 +7,8 @@
  */
 import { Suspense, useEffect } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Bloom, DepthOfField, EffectComposer, SSAO, ToneMapping } from '@react-three/postprocessing';
-import { BlendFunction, ToneMappingMode, type DepthOfFieldEffect } from 'postprocessing';
+import { Bloom, EffectComposer, SSAO, ToneMapping } from '@react-three/postprocessing';
+import { BlendFunction, ToneMappingMode } from 'postprocessing';
 import * as THREE from 'three';
 import { useSimStore } from '../store/useSimStore';
 import { CameraRig } from './CameraRig';
@@ -86,50 +86,6 @@ function SectionCut() {
   return null;
 }
 
-/**
- * PresentationDepthOfField — shallow focus, PRESENTATION MODE ONLY.
- *
- * A photographic depth falloff is the strongest single cue that separates "a
- * render" from "a photograph of hardware", but it actively destroys an
- * analysis view: a student comparing stage 4 to stage 9 needs both sharp.
- * So it lives exactly where the rest of the cinematic treatment lives — the
- * presentation mode that already hides the overlays, collapses the panels and
- * forces the perspective projection (DoF is meaningless under orthographic).
- *
- * Focus tracks whatever the user is actually looking at: the orbit target.
- * Zoom into the fan and the fan is sharp with the tail falling away; pull out
- * to the hero pose and the whole engine sits inside the focus range.
- */
-function PresentationDepthOfField() {
-  const presentationMode = useSimStore((s) => s.presentationMode);
-  const effect = useRef<DepthOfFieldEffect>(null);
-  const camera = useThree((s) => s.camera);
-  const controls = useThree((s) => s.controls) as { target?: THREE.Vector3 } | null;
-
-  useFrame(() => {
-    const e = effect.current;
-    if (!e) return;
-    const target = controls?.target;
-    // Distance in METERS from the camera to the orbit pivot.
-    e.worldFocusDistance = target
-      ? camera.position.distanceTo(target)
-      : camera.position.length();
-  });
-
-  if (!presentationMode) return null;
-  return (
-    <DepthOfField
-      ref={effect}
-      worldFocusDistance={9}
-      // Depth kept sharp around the focus point [m]. The engine is ~8 m long,
-      // so this holds a module crisp while the far end softens.
-      focusRange={3.2}
-      bokehScale={2.6}
-      resolutionScale={0.75}
-    />
-  );
-}
-
 export function EngineScene() {
   return (
     <Canvas
@@ -197,11 +153,6 @@ export function EngineScene() {
           resolutionScale={0.75}
           depthAwareUpsampling
         />
-        {/* Shallow focus, presentation mode only (see the component). Sits
-            after AO — occlusion is a shading term and belongs in the sharp
-            image — and before bloom, so out-of-focus highlights bloom as the
-            soft discs they've become. */}
-        <PresentationDepthOfField />
         <Bloom mipmapBlur luminanceThreshold={1.0} luminanceSmoothing={0.2} intensity={0.85} />
         <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
       </EffectComposer>
