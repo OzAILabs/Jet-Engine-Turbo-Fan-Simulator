@@ -45,22 +45,30 @@ export function Lighting() {
       {/* Sky tint above, cool dark ground below: gentle outdoor ambience. */}
       <hemisphereLight color="#c5d7ef" groundColor="#15181d" intensity={0.28} />
 
-      {/* Large soft key light: main shaping light from the upper front-right. */}
+      {/* Large soft key light: main shaping light from the upper front-right.
+          Shadow frustum is fitted to the ENGINE rather than left generous: the
+          model's bounding sphere is r ≈ 4.6 m (x −4.2…4.0, radius 1.85) and
+          the light sits 16 m out, so ±5 m covers it at any orientation while
+          ±7/±6 spent most of the map on empty space. Fitted extents plus a
+          4096 map take the shadow texel from ~6.8 mm to ~2.4 mm — fine enough
+          to resolve blade and vane shadows instead of smearing them — and the
+          tighter near/far lets the depth bias come down accordingly (less
+          peter-panning on thin parts). */}
       <directionalLight
         position={[8, 12, 7]}
         intensity={1.55}
         color="#fff8ed"
         castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
-        shadow-camera-left={-7}
-        shadow-camera-right={7}
-        shadow-camera-top={6}
-        shadow-camera-bottom={-6}
-        shadow-camera-near={1}
-        shadow-camera-far={30}
-        shadow-bias={-0.00025}
-        shadow-normalBias={0.025}
+        shadow-mapSize-width={4096}
+        shadow-mapSize-height={4096}
+        shadow-camera-left={-5}
+        shadow-camera-right={5}
+        shadow-camera-top={5}
+        shadow-camera-bottom={-5}
+        shadow-camera-near={9}
+        shadow-camera-far={24}
+        shadow-bias={-0.0001}
+        shadow-normalBias={0.012}
         shadow-radius={4}
       />
 
