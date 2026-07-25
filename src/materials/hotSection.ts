@@ -30,6 +30,7 @@
  * be called once from useMemo. Nothing in this module allocates per frame.
  */
 import * as THREE from 'three';
+import { normalMapFromHeight } from './proceduralNormal';
 
 // --- Palette ----------------------------------------------------------------
 const NICKEL_BASE = '#8f8a7e'; // Inconel-ish nickel alloy
@@ -171,6 +172,26 @@ function stainTexture(kind: 'hpt' | 'lpt'): THREE.CanvasTexture {
   return tex;
 }
 
+/**
+ * Relief for the hot section, derived from the staining canvas itself
+ * (CanvasTexture keeps its source canvas in `.image`, so no painter refactor
+ * is needed). Oxide scale and thermal-barrier spallation genuinely stand
+ * proud of the parent metal, and the mottling that darkens a blade is the
+ * same field that roughens it — so the stain doubles as a height field.
+ */
+const stainNormals: { hpt?: THREE.CanvasTexture | null; lpt?: THREE.CanvasTexture | null } = {};
+
+function stainNormalTexture(kind: 'hpt' | 'lpt'): THREE.CanvasTexture | null {
+  if (kind in stainNormals) return stainNormals[kind] ?? null;
+  const src = stainTexture(kind).image as HTMLCanvasElement | undefined;
+  const tex =
+    src && typeof src.getContext === 'function'
+      ? normalMapFromHeight(src, 1.0, THREE.RepeatWrapping)
+      : null;
+  stainNormals[kind] = tex;
+  return tex;
+}
+
 function ceramicTexture(): THREE.CanvasTexture {
   if (!ceramicTex) ceramicTex = finishColorTexture(paintCeramic());
   return ceramicTex;
@@ -185,7 +206,7 @@ function ceramicTexture(): THREE.CanvasTexture {
  * component drives emissive+intensity in useFrame via overTempGlow().
  */
 export function createHeatStainedTurbineMaterial(kind: 'hpt' | 'lpt'): THREE.MeshStandardMaterial {
-  return new THREE.MeshStandardMaterial({
+  const mat = new THREE.MeshStandardMaterial({
     color: '#ffffff',
     map: stainTexture(kind),
     metalness: 0.75,
@@ -193,6 +214,12 @@ export function createHeatStainedTurbineMaterial(kind: 'hpt' | 'lpt'): THREE.Mes
     emissive: new THREE.Color('#000000'),
     emissiveIntensity: 0,
   });
+  const normal = stainNormalTexture(kind);
+  if (normal) {
+    mat.normalMap = normal;
+    mat.normalScale = new THREE.Vector2(0.3, 0.3); // scale, not corrugation
+  }
+  return mat;
 }
 
 /** Drum/disk variant: shares the HPT staining, multiplied darker (shadowed

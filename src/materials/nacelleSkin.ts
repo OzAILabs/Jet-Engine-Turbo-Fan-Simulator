@@ -27,6 +27,7 @@
 import * as THREE from 'three';
 import { nacelleSkin as skin } from '../geometry/nacelleGeometry';
 import { makeRand, toTexture, tryMakeCanvas } from './coldSection';
+import { normalMapFromHeight } from './proceduralNormal';
 
 const W = 2048; // master px space (color + bump canvases)
 const RM = 1024; // packed rough/metal canvas (scaled to master space)
@@ -41,7 +42,8 @@ const pxU = (u: number) => (((u % 1) + 1) % 1) * W;
 
 interface SkinMaps {
   map: THREE.CanvasTexture;
-  bump: THREE.CanvasTexture;
+  /** Tangent-space relief Sobel'd from the bump field (see below). */
+  normal: THREE.CanvasTexture | null;
   rm: THREE.CanvasTexture;
 }
 let skinMaps: SkinMaps | null | undefined; // undefined = not tried yet
@@ -469,7 +471,12 @@ function getSkinMaps(): SkinMaps | null {
   paintSkin(color.ctx, bump.ctx, rm.ctx);
   skinMaps = {
     map: toTexture(color.canvas, { srgb: true, wrap: THREE.RepeatWrapping }),
-    bump: toTexture(bump.canvas, { wrap: THREE.RepeatWrapping }),
+    // The bump canvas was already a purpose-painted height field (panel
+    // grooves, countersunk fasteners, door scribe lines, louvre slats), but
+    // bumpMap only perturbs shading from screen-space derivatives. Sobel'ing
+    // it into a real tangent-space normal map gives the seams and rivet rows
+    // crisp, direction-correct highlights instead of a soft smudge.
+    normal: normalMapFromHeight(bump.canvas, 2.2, THREE.RepeatWrapping),
     rm: toTexture(rm.canvas, { wrap: THREE.RepeatWrapping }),
   };
   return skinMaps;
@@ -491,8 +498,10 @@ export function createNacelleSkinMaterial(): THREE.MeshStandardMaterial {
   const maps = getSkinMaps();
   if (maps) {
     mat.map = maps.map;
-    mat.bumpMap = maps.bump;
-    mat.bumpScale = 0.02;
+    if (maps.normal) {
+      mat.normalMap = maps.normal;
+      mat.normalScale = new THREE.Vector2(0.8, 0.8);
+    }
     mat.roughnessMap = maps.rm;
     mat.metalnessMap = maps.rm;
   } else {

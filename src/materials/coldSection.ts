@@ -29,9 +29,17 @@
  * the factories skip the maps and return equivalent flat-value materials.
  */
 import * as THREE from 'three';
+import { heightCanvasToNormal, normalMapFromHeight } from './proceduralNormal';
 
 /** All maps are painted at this square power-of-two size (mipmap friendly). */
 const SIZE = 256;
+/**
+ * Hero surfaces (the ones the camera gets close to) paint at this size
+ * instead. 256 px was fine for tinting but far too coarse to carry believable
+ * surface relief — the nacelle skin's 2048 px maps are visibly the best
+ * surfaces in the sim, and this closes some of that gap.
+ */
+const HERO_SIZE = 1024;
 
 /** Deterministic PRNG (Park–Miller) so every load paints identical textures. */
 export function makeRand(seed: number): () => number {
@@ -83,8 +91,31 @@ interface FanBladeMaps {
   map: THREE.CanvasTexture;
   /** Packed roughness (G) + metalness (B) — one texture feeds both slots. */
   rm: THREE.CanvasTexture;
+  /** Tangent-space relief: the woven tows stand proud of the resin. */
+  normal: THREE.CanvasTexture | null;
 }
 let fanBladeMaps: FanBladeMaps | null | undefined; // undefined = not tried yet
+
+/**
+ * Weave RELIEF, painted as its own height field rather than derived from the
+ * colour map: a 2/2 twill's tows physically stand proud where they pass OVER
+ * and sink where they pass under, and deriving that from the colour canvas
+ * would also pick up the sheen gradient and sheath fade as if they were
+ * geometry. Cell size matches the colour map's twill so relief and tone line
+ * up exactly.
+ */
+function paintWeaveHeight(ctx: CanvasRenderingContext2D, size: number): void {
+  const cellPx = Math.round((size / SIZE) * 3); // same tow pitch as the colour map
+  const cells = Math.ceil(size / cellPx);
+  for (let iy = 0; iy < cells; iy++) {
+    for (let ix = 0; ix < cells; ix++) {
+      const over = (ix + iy) % 4 < 2;
+      const v = over ? 190 : 96; // raised tow vs. the one passing beneath
+      ctx.fillStyle = `rgb(${v},${v},${v})`;
+      ctx.fillRect(ix * cellPx, iy * cellPx, cellPx, cellPx);
+    }
+  }
+}
 
 function getFanBladeMaps(): FanBladeMaps | null {
   if (fanBladeMaps !== undefined) return fanBladeMaps;
@@ -155,6 +186,14 @@ function getFanBladeMaps(): FanBladeMaps | null {
   fanBladeMaps = {
     map: toTexture(colorC.canvas, { srgb: true }),
     rm: toTexture(rmC.canvas),
+    // Blade UVs are ClampToEdge (the sheath strip must not tile across the
+    // chord), so the relief has to clamp identically.
+    normal: heightCanvasToNormal(
+      HERO_SIZE,
+      paintWeaveHeight,
+      1.6,
+      THREE.ClampToEdgeWrapping,
+    ),
   };
   return fanBladeMaps;
 }
@@ -177,6 +216,10 @@ export function createFanBladeMaterial(): THREE.MeshStandardMaterial {
     mat.map = maps.map;
     mat.roughnessMap = maps.rm; // green channel
     mat.metalnessMap = maps.rm; // blue channel — one texture, two slots
+    if (maps.normal) {
+      mat.normalMap = maps.normal;
+      mat.normalScale = new THREE.Vector2(0.55, 0.55); // woven, not corrugated
+    }
   } else {
     // Headless fallback: plain dark composite with a resin-like sheen.
     mat.color.set('#262a31');
@@ -194,40 +237,49 @@ export function createFanBladeMaterial(): THREE.MeshStandardMaterial {
 const BRUSH_MEAN = 0.78;
 
 let brushedRoughTex: THREE.CanvasTexture | null | undefined;
+/** Relief derived from the same streak field (grinding grooves ARE height). */
+let brushedNormalTex: THREE.CanvasTexture | null | undefined;
 
 function getBrushedRoughnessTexture(): THREE.CanvasTexture | null {
   if (brushedRoughTex !== undefined) return brushedRoughTex;
-  const surf = tryMakeCanvas();
+  const surf = tryMakeCanvas(HERO_SIZE);
   if (!surf) {
     brushedRoughTex = null;
+    brushedNormalTex = null;
     return brushedRoughTex;
   }
   const { canvas, ctx } = surf;
   const rand = makeRand(23550); // N1 rated rpm ×10
 
+  // Painted at HERO_SIZE now (the drums and blades are close-up surfaces), so
+  // every extent below comes from the canvas rather than the 256 px default.
+  const S = canvas.width;
   const base = Math.round(BRUSH_MEAN * 255);
   ctx.fillStyle = `rgb(${base},${base},${base})`;
-  ctx.fillRect(0, 0, SIZE, SIZE);
+  ctx.fillRect(0, 0, S, S);
 
   // 1 px machining streaks. Canvas +x maps CHORDWISE on the blades (their UVs
   // run u = chord) and CIRCUMFERENTIALLY on the drums (CylinderGeometry UVs) —
   // i.e. along the grinding/turning direction in both cases. Full-width rows
   // tile seamlessly under RepeatWrapping.
-  for (let y = 0; y < SIZE; y++) {
+  for (let y = 0; y < S; y++) {
     const v = THREE.MathUtils.clamp(BRUSH_MEAN + (rand() - 0.5) * 0.3, 0.55, 1.0);
     const g = Math.round(v * 255);
     ctx.fillStyle = `rgb(${g},${g},${g})`;
-    ctx.fillRect(0, y, SIZE, 1);
+    ctx.fillRect(0, y, S, 1);
   }
   // A few wider polished bands / score lines for large-scale interest.
-  for (let i = 0; i < 26; i++) {
-    const y = Math.floor(rand() * SIZE);
+  for (let i = 0; i < 26 * (S / SIZE); i++) {
+    const y = Math.floor(rand() * S);
     const h = 1 + Math.floor(rand() * 2);
     ctx.fillStyle = rand() > 0.5 ? 'rgba(255,255,255,0.16)' : 'rgba(40,40,40,0.14)';
-    ctx.fillRect(0, y, SIZE, h);
+    ctx.fillRect(0, y, S, h);
   }
 
   brushedRoughTex = toTexture(canvas, { wrap: THREE.RepeatWrapping });
+  // Those streaks are grinding grooves, so the same field IS the height field:
+  // gentle gain, because turning marks are microns deep, not millimetres.
+  brushedNormalTex = normalMapFromHeight(canvas, 0.8, THREE.RepeatWrapping);
   return brushedRoughTex;
 }
 
@@ -260,6 +312,10 @@ export function createBrushedTitaniumMaterial(
   if (tex) {
     mat.roughnessMap = tex;
     mat.roughness = roughness / BRUSH_MEAN;
+    if (brushedNormalTex) {
+      mat.normalMap = brushedNormalTex;
+      mat.normalScale = new THREE.Vector2(0.4, 0.4);
+    }
   } else {
     mat.roughness = roughness;
   }
