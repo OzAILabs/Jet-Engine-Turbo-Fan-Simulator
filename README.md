@@ -12,7 +12,7 @@
 ![No assets](https://img.shields.io/badge/3D_assets-100%25_procedural-blueviolet)
 [![License: PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm_Noncommercial_1.0.0-blue)](LICENSE)
 
-![GE90-inspired turbofan interactive cutaway, running at takeoff power](docs/hero-01-cutaway.png)
+![The full simulator interface: cutaway engine centre-stage, flight and view controls at left, EICAS warnings and live engineering data at right, and the flip-out engine start panel below](docs/Main_Hero.png)
 
 </div>
 
@@ -49,6 +49,10 @@ There are no model files, no texture assets, and no network fetches.
 > [docs/NEXT_LEVEL_PLAN.md](docs/NEXT_LEVEL_PLAN.md) for sources.
 
 ## Gallery
+
+![Cutaway view of the engine at takeoff power, with the combustor burning and the exhaust plume trailing aft](docs/hero-01-cutaway.png)
+
+<div align="center"><em>Cutaway mode at takeoff power — the combustor is a live shader flame whose violence tracks fuel flow.</em></div>
 
 | Exterior — procedural painted skin | Fan face — 22 composite blades |
 |---|---|
