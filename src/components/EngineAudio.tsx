@@ -30,6 +30,24 @@ export function EngineAudio() {
     return remove;
   }, []);
 
+  // Silence a backgrounded tab. update() below rides requestAnimationFrame,
+  // which browsers throttle or stop when the tab is hidden — but the audio
+  // graph keeps running on its own thread, so without this the engine drones
+  // on frozen at its last parameters, from a tab you can no longer see.
+  // pagehide covers bfcache navigations, which don't always fire
+  // visibilitychange.
+  useEffect(() => {
+    const sync = () => void engineAudio.setSuspended(document.hidden);
+    const park = () => void engineAudio.setSuspended(true);
+    document.addEventListener('visibilitychange', sync);
+    window.addEventListener('pagehide', park);
+    return () => {
+      document.removeEventListener('visibilitychange', sync);
+      window.removeEventListener('pagehide', park);
+      park(); // unmounting must not leave a live graph behind either
+    };
+  }, []);
+
   useEffect(() => {
     let frameId = 0;
 

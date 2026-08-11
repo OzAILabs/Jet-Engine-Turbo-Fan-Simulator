@@ -262,6 +262,28 @@ class ProceduralEngineAudio {
     this.applyMaster();
   }
 
+  /**
+   * Park/unpark the whole graph when the tab is hidden.
+   *
+   * This is not a nicety — it fixes a real "stuck engine noise" bug. The
+   * oscillators run continuously on the browser's AUDIO thread, but the
+   * per-frame update() that steers their pitch and gain is driven by
+   * requestAnimationFrame on the MAIN thread. Browsers throttle or stop rAF
+   * in a background tab, so a hidden tab would keep sounding while its
+   * parameters were frozen at whatever the last visible frame set: a
+   * constant, unchanging drone with no way to reach the controls that would
+   * silence it. Suspending the AudioContext stops the audio thread too.
+   */
+  async setSuspended(suspended: boolean): Promise<void> {
+    const context = this.context;
+    if (!context) return;
+    if (suspended) {
+      if (context.state === 'running') await context.suspend();
+    } else if (this.enabled && context.state === 'suspended') {
+      await context.resume();
+    }
+  }
+
   setVolume(volume: number) {
     const next = Math.max(0, Math.min(1, volume));
     if (next === this.volume) return;
