@@ -1,0 +1,35 @@
+# Checks every pull request. This is the safety net for changes you did not
+# write yourself: if someone proposes a change that breaks the physics, the
+# calibration anchors in the test suite go red and GitHub shows a ✗ on the PR
+# — you can see that a change is unsafe without reading a line of code.
+#
+# It only reports. It never publishes anything.
+name: CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Includes the calibration anchors that pin the model to the published
+      # TCDS/ICAO figures, and the start-sequence timeline contract.
+      - name: Run the simulation tests
+        run: npm test
+
+      # `tsc -b` (not `tsc --noEmit`) — the root tsconfig is a solution file
+      # with only references, so --noEmit there checks nothing.
+      - name: Type-check
+        run: npx tsc -b

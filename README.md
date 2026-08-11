@@ -4,6 +4,7 @@
 
 **A browser-based, physically-modelled high-bypass turbofan you can start cold and dark, fly, break, and take apart.**
 
+[![Live demo](https://img.shields.io/badge/▶_try_it_live-2ea44f)](https://ozailabs.github.io/Jet-Engine-Turbo-Fan-Simulator/)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178c6?logo=typescript&logoColor=white)
 ![Three.js](https://img.shields.io/badge/Three.js-000000?logo=three.js&logoColor=white)
 ![React](https://img.shields.io/badge/React_18-20232a?logo=react)
@@ -77,6 +78,14 @@ oil pressure and severe vibration. Or burst a rotor disk instead, and watch an
 handle will put out.
 
 </div>
+
+## Try it
+
+**[▶ Run it in your browser](https://ozailabs.github.io/Jet-Engine-Turbo-Fan-Simulator/)** — no install, nothing to sign up for.
+
+It runs entirely on your machine: the physics, the WebGL rendering and the
+procedurally generated textures are all computed in your browser. There is no
+backend, and nothing is sent anywhere.
 
 ## Quick start
 
