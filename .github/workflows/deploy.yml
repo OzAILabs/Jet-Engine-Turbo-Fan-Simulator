@@ -1,0 +1,69 @@
+# Builds the simulator and publishes it to GitHub Pages on every push to main.
+#
+# GitHub Pages only SERVES FILES — it never runs any of this code. The build
+# below produces three static files (~1.4 MB total) and hands them to Pages;
+# everything after that (physics, WebGL rendering, procedural textures, audio)
+# runs in the visitor's own browser.
+#
+# The test suite runs first and the job fails if it goes red, so a change that
+# breaks the physics never reaches the live site.
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  # Lets you re-publish by hand from the Actions tab without pushing anything.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# If two pushes land close together, let the newer one win rather than
+# racing to publish.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run the simulation tests
+        run: npm test
+
+      - name: Type-check
+        run: npx tsc -b
+
+      # A GitHub Pages *project* site is served from /<repo-name>/, so the
+      # asset base must match the repository name. Passed here rather than
+      # hard-coded in vite.config.ts so local `npm run dev` is unaffected.
+      - name: Build
+        run: npx vite build --base=/Jet-Engine-Turbo-Fan-Simulator/
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

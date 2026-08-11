@@ -200,6 +200,18 @@ Honesty about where this model matches the real engine and where it doesn't:
 - **It is a 1D cycle model.** There is no CFD, no 3D flow field, and no
   blade-row aerodynamics.
 
+## Project status & contributing
+
+Maintained casually, as-is — a personal educational project rather than a
+supported product. Issues and pull requests are welcome, but responses may be
+slow and PRs may be declined. Forking is entirely fine within the terms of the
+[LICENSE](LICENSE).
+
+If you'd like to propose a change, please read [CONTRIBUTING.md](CONTRIBUTING.md)
+first. The short version: **the physics numbers are sourced** (`[TCDS]`/`[ICAO]`
+tags in the code) and pinned by calibration anchors in the test suite, so
+changes that turn `npm test` red won't be merged.
+
 ## Roadmap
 
 See [Future Features and Realism Roadmap](docs/FUTURE_FEATURES.md) for completed
