@@ -134,8 +134,12 @@ function PostChain() {
     try {
       return new DepthOfFieldEffect(camera, {
         worldFocusDistance: 9, // replaced every frame by the tracker below
-        focusRange: 3.2, // metres held sharp around the focus point
-        bokehScale: 2.6,
+        // Tuned against the real subject: the engine is ~8 m long, so a tight
+        // range plus a big bokeh turned the nose and tail to mush. This holds
+        // the bulk of the engine readable and lets only the extremes go soft —
+        // a photographic falloff rather than a tilt-shift toy effect.
+        focusRange: 6.5, // metres held sharp around the focus point
+        bokehScale: 1.3,
         resolutionScale: 0.75,
       });
     } catch (err) {
