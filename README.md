@@ -4,7 +4,6 @@
 
 **A browser-based, physically-modelled high-bypass turbofan you can start cold and dark, fly, break, and take apart.**
 
-[![Live demo](https://img.shields.io/badge/live-omessner.cloud%2FJetEngine-2ea44f)](https://omessner.cloud/JetEngine)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178c6?logo=typescript&logoColor=white)
 ![Three.js](https://img.shields.io/badge/Three.js-000000?logo=three.js&logoColor=white)
 ![React](https://img.shields.io/badge/React_18-20232a?logo=react)
