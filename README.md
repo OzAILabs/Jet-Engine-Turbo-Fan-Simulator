@@ -10,6 +10,7 @@
 ![React](https://img.shields.io/badge/React_18-20232a?logo=react)
 ![Tests](https://img.shields.io/badge/tests-102_passing-brightgreen)
 ![No assets](https://img.shields.io/badge/3D_assets-100%25_procedural-blueviolet)
+[![License: PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm_Noncommercial_1.0.0-blue)](LICENSE)
 
 ![GE90-inspired turbofan interactive cutaway, running at takeoff power](docs/hero-01-cutaway.png)
 
@@ -209,3 +210,29 @@ TypeScript · React 18 · Vite · Three.js · @react-three/fiber · @react-three
 @react-three/postprocessing · Zustand · Vitest.
 No backend, no proprietary assets — all geometry and every texture generated
 procedurally at runtime.
+
+## License
+
+Released under the [PolyForm Noncommercial License 1.0.0](LICENSE).
+
+**Free** for personal use, study, hobby projects, research, and experimentation —
+and explicitly free for **educational institutions**, charities, public research
+organizations and government institutions, regardless of how they're funded. If
+you're a student, a teacher, or a university, you're covered: use it, modify it,
+build on it.
+
+**Commercial use requires a separate license.** If you want to use this in a
+product, a paid course, a commercial training program, or anything else you make
+money from, get in touch at **omessner@gmail.com** — I'm happy to talk.
+
+> Note: this is a *source-available* license, not an OSI-approved open-source one.
+> That's a deliberate choice: the goal is for the project to be freely usable by
+> everyone learning from it, while keeping commercial use a conversation.
+
+## Trademarks & affiliation
+
+Not affiliated with, endorsed by, or sponsored by General Electric or Boeing.
+"GE90" and "GE90-115B" are trademarks of General Electric Company, used here
+descriptively to identify the engine this educational model is based on. All
+geometry is an original procedural approximation built from public photographs
+and published data — no manufacturer drawings, data, or assets are included.
