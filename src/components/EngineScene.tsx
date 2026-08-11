@@ -156,37 +156,53 @@ function PostChain() {
   useFrame(() => {
     if (!dof) return;
     const target = controls?.target;
-    dof.worldFocusDistance = target
+    // postprocessing 6.39 ships this setter but omits it from its .d.ts, so
+    // the cast is a types gap, not a runtime one (constructor, setter and
+    // dispose were all exercised against the real build before shipping).
+    (dof as unknown as { worldFocusDistance: number }).worldFocusDistance = target
       ? camera.position.distanceTo(target)
       : camera.position.length();
   });
+
+  // Built as an ARRAY rather than inline JSX: EffectComposer types its
+  // children as Element | Element[], which a conditional `... : null` violates.
+  const effects = [
+    <SSAO
+      key="ssao"
+      blendFunction={BlendFunction.MULTIPLY}
+      samples={24}
+      rings={5} // not a multiple of samples — avoids banding in the spiral
+      radius={0.06} // screen-relative: tight, contact-scale occlusion
+      intensity={1.7}
+      bias={0.03}
+      fade={0.02}
+      luminanceInfluence={0.5}
+      minRadiusScale={0.15}
+      // World-space fade (scene units are meters; the engine spans ~8 m).
+      worldDistanceThreshold={14}
+      worldDistanceFalloff={6}
+      worldProximityThreshold={0.4}
+      worldProximityFalloff={0.12}
+      resolutionScale={0.75}
+      depthAwareUpsampling
+    />,
+    ...(dof ? [<primitive key="dof" object={dof} />] : []),
+    <Bloom
+      key="bloom"
+      mipmapBlur
+      luminanceThreshold={1.0}
+      luminanceSmoothing={0.2}
+      intensity={0.85}
+    />,
+    <ToneMapping key="tonemap" mode={ToneMappingMode.ACES_FILMIC} />,
+  ];
 
   return (
     // Keyed so the composer fully rebuilds its pass list when DoF comes and
     // goes: EffectComposer collects effects in a layout effect that would not
     // otherwise re-run for a conditional child.
     <EffectComposer key={dof ? 'dof' : 'plain'} multisampling={4} enableNormalPass>
-      <SSAO
-        blendFunction={BlendFunction.MULTIPLY}
-        samples={24}
-        rings={5} // not a multiple of samples — avoids banding in the spiral
-        radius={0.06} // screen-relative: tight, contact-scale occlusion
-        intensity={1.7}
-        bias={0.03}
-        fade={0.02}
-        luminanceInfluence={0.5}
-        minRadiusScale={0.15}
-        // World-space fade (scene units are meters; the engine spans ~8 m).
-        worldDistanceThreshold={14}
-        worldDistanceFalloff={6}
-        worldProximityThreshold={0.4}
-        worldProximityFalloff={0.12}
-        resolutionScale={0.75}
-        depthAwareUpsampling
-      />
-      {dof ? <primitive object={dof} /> : null}
-      <Bloom mipmapBlur luminanceThreshold={1.0} luminanceSmoothing={0.2} intensity={0.85} />
-      <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
+      {effects}
     </EffectComposer>
   );
 }
